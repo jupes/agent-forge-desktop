@@ -82,7 +82,7 @@ Focused ownership/draft/status tests, the five live-presentation cases, 24 affec
 
 The captures show portions of the actual views, rather than every state.
 
-![Exact saved Council original](screenshots/council-exact-original.png)
+The earlier exact-original capture was retired because it included a local filesystem path. Use the review flow and automated assertions for that state; the result captures below cover separate states.
 
 ![Completed Council result](screenshots/council-completed-result.png)
 

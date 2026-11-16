@@ -32,3 +32,5 @@ The current app still opens a valid harness checkout. This source split does not
 ## Migration and history
 
 Git history through `c886f54814f36804f812b56f0935ca8841d72dcc` is preserved. Desktop-owned files retain their original paths. The shared engine is maintained in the harness; update its submodule and lock together after verifying compatibility. Distribution notices and licenses are assembled from the pinned engine and the desktop Rust dependency lock.
+
+See [Repository content](apps/desktop/docs/repository-content.md) for source ownership and publication rules.
