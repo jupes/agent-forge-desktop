@@ -1,7 +1,7 @@
 import { render } from "preact";
-import { DashboardApp } from "./app";
-import { DesktopApp } from "../../apps/desktop/src/DesktopApp";
 import { installDesktopConnection } from "../../apps/desktop/src/ConnectionBanner";
+import { DesktopApp } from "../../apps/desktop/src/DesktopApp";
+import { DashboardApp } from "./app";
 
 const desktop = import.meta.env?.MODE === "desktop";
 if (desktop) installDesktopConnection();

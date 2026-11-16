@@ -138,7 +138,9 @@ test("one workflow-level Bun version feeds every action and npm runtime installa
 
 test("every dependency install first restores a Bun download cache keyed by OS, that Bun version and the lockfile", () => {
   const installs = Object.values(workflow.jobs).filter((job) =>
-    (job.steps ?? []).some((step) => step.run === "bun install --frozen-lockfile"),
+    (job.steps ?? []).some(
+      (step) => step.run === "bun install --frozen-lockfile",
+    ),
   );
   expect(installs).toHaveLength(3);
   for (const job of installs) {
