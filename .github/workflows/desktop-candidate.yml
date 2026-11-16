@@ -66,6 +66,7 @@ jobs:
         timeout-minutes: 2
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
       - name: Verify and identify portable candidate
+        id: identity
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
@@ -102,7 +103,7 @@ jobs:
           }
           $manifest = [ordered]@{
             schemaVersion = 1
-            productVersion = '1.0.0-rc.1'
+            productVersion = $source.desktopVersion
             kind = 'portable-engineering-candidate'
             sourceCommit = $head
             sourceTree = $tree
@@ -120,12 +121,13 @@ jobs:
             })
           }
           $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $stage 'CANDIDATE.json') -Encoding utf8NoBOM
+          "product_version=$($source.desktopVersion)" >> $env:GITHUB_OUTPUT
           Write-Output "Candidate source: $head; tree: $tree; files: $($files.Count)"
       - name: Upload portable candidate
         id: candidate
         uses: actions/upload-artifact@v4
         with:
-          name: agent-forge-1.0.0-rc.1-windows-x64-${{ env.CANDIDATE_SOURCE_SHA }}
+          name: agent-forge-desktop-${{ steps.identity.outputs.product_version }}-windows-x64-${{ env.CANDIDATE_SOURCE_SHA }}
           path: .work/desktop/apps/desktop/build/windows-x64/
           if-no-files-found: error
           include-hidden-files: true

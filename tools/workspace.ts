@@ -39,7 +39,8 @@ export async function command(argv: string[], cwd = root, timeout = 60_000) {
 }
 
 const git = (args: string[], cwd = root) => command([
-  "git", "-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args,
+  "git", "-c", `safe.directory=${root}`, "-c", `safe.directory=${engine}`,
+  "-c", `safe.directory=${workspace}`, "-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args,
 ], cwd);
 
 function safe(file: string): string {
@@ -65,6 +66,14 @@ export async function prepare(): Promise<string> {
   const owned = await json(join(root, "product.json"));
   if (!Array.isArray(owned.paths) || !owned.paths.every((p) => typeof p === "string")) throw Error("Invalid desktop ownership manifest");
   const desktopCommit = (await git(["rev-parse", "HEAD"])).trim();
+  const desktopPackage = await json(join(root, "package.json"));
+  const desktopVersion = desktopPackage.version;
+  const tauri = await json(join(root, "apps/desktop/src-tauri/tauri.conf.json"));
+  const cargo = await readFile(join(root, "apps/desktop/src-tauri/Cargo.toml"), "utf8");
+  const cargoVersion = /^version\s*=\s*"([^"\r\n]+)"/m.exec(cargo)?.[1];
+  if (typeof desktopVersion !== "string" || desktopVersion.length > 128 || desktopVersion !== tauri.version || desktopVersion !== cargoVersion) {
+    throw Error("Desktop package, Tauri and Cargo versions must agree");
+  }
   const files: { path: string; sha256: string }[] = [];
   for (const file of owned.paths as string[]) {
     safe(file);
@@ -73,7 +82,7 @@ export async function prepare(): Promise<string> {
     if (!stat.isFile() || stat.isSymbolicLink()) throw Error(`Not a regular owned source: ${file}`);
     files.push({ path: file, sha256: createHash("sha256").update(await readFile(source)).digest("hex") });
   }
-  const sourceDigest = createHash("sha256").update(JSON.stringify(files)).update(await readFile(join(root, "overlays/docs-main.tsx"))).update(await readFile(join(root, "build-scripts.json"))).digest("hex");
+  const sourceDigest = createHash("sha256").update(JSON.stringify(files)).update(desktopVersion).update(await readFile(join(root, "overlays/docs-main.tsx"))).update(await readFile(join(root, "build-scripts.json"))).digest("hex");
   try {
     const existing = await json(join(workspace, ".forge-desktop-source.json"));
     if (existing.engineCommit === actualEngine && existing.desktopCommit === desktopCommit && existing.sourceDigest === sourceDigest) {
@@ -98,9 +107,11 @@ export async function prepare(): Promise<string> {
   await cp(join(root, "overlays/docs-main.tsx"), entry);
   const build = await json(join(root, "build-scripts.json"));
   const pkg = await json(join(workspace, "package.json"));
+  const engineVersion = pkg.version;
+  pkg.version = desktopVersion;
   pkg.scripts = { ...(pkg.scripts as Record<string, string>), ...build };
   await writeFile(join(workspace, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
-  const source = { schemaVersion: 1, desktopCommit, engineCommit: actualEngine, sourceDigest, files };
+  const source = { schemaVersion: 1, desktopCommit, desktopVersion, engineCommit: actualEngine, engineVersion, sourceDigest, files };
   await writeFile(join(workspace, ".forge-desktop-source.json"), JSON.stringify(source, null, 2) + "\n");
   await git(["add", "--all"], workspace);
   await git(["-c", "user.name=Forge build assembly", "-c", "user.email=build@agentforge.invalid", "-c", "core.hooksPath=", "commit", "--no-gpg-sign", "-m", `build: assemble desktop ${desktopCommit} with engine ${actualEngine}`], workspace);
