@@ -127,6 +127,7 @@ jobs:
         with:
           node-version: 22
       - name: Install the pinned Bun platform package
+        working-directory: .
         timeout-minutes: 2
         run: |
           npm install --prefix "$RUNNER_TEMP/forge-bun" --no-save --package-lock=false --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org --strict-ssl=true "@oven/bun-linux-x64@${BUN_VERSION}"
