@@ -5,6 +5,9 @@ on:
     branches: [master, main]
 permissions:
   contents: read
+defaults:
+  run:
+    working-directory: .work/desktop
 # The one place the Bun version is set. Every setup-bun step and every Bun
 # download cache key read it, so a bump installs the new runtime and starts a
 # fresh download cache together.
@@ -22,6 +25,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -33,6 +38,9 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+      - name: Assemble pinned engine and desktop sources
+        working-directory: .
+        run: bun tools/workspace.ts
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
@@ -51,6 +59,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -59,6 +69,9 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+      - name: Assemble pinned engine and desktop sources
+        working-directory: .
+        run: bun tools/workspace.ts
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test ./scripts ./apps/desktop/src --timeout 15000
@@ -84,7 +97,10 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Build pinned Git for protected checkpoint capture
+        working-directory: .
         timeout-minutes: 6
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -124,6 +140,9 @@ jobs:
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+      - name: Assemble pinned engine and desktop sources
+        working-directory: .
+        run: bun tools/workspace.ts
       - run: bun install --frozen-lockfile
       - name: Verify installed Playwright matches browser image
         run: test "$(bunx playwright --version | awk '{print $2}')" = "1.63.0"
@@ -138,7 +157,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-test-results-${{ matrix.shard }}
-          path: test-results/
+          path: .work/desktop/test-results/
           retention-days: 14
       # Each isolated matrix job runs its disjoint desktop test shard. The
       # complete suite stays required; worker/test concurrency remains serial.
@@ -150,7 +169,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-playwright-test-results-${{ matrix.shard }}
-          path: test-results/
+          path: .work/desktop/test-results/
           retention-days: 14
       # Upload only the controlled visualization fixtures; no local GUI capture is required.
       - name: Upload Beads work-map screenshots
@@ -158,7 +177,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: beads-work-map-${{ matrix.shard }}
-          path: test-results/work-map-evidence/*.png
+          path: .work/desktop/test-results/work-map-evidence/*.png
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload Hearth log screenshots
@@ -166,7 +185,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hearth-log-${{ matrix.shard }}
-          path: test-results/hearth-log-evidence/*.png
+          path: .work/desktop/test-results/hearth-log-evidence/*.png
           if-no-files-found: ignore
           retention-days: 14
       - name: Qualify MCP integration UI negative controls
@@ -186,8 +205,8 @@ jobs:
         with:
           name: mcp-integrations-${{ matrix.shard }}
           path: |
-            .tmp/screenshots/integrations/*.png
-            .tmp/work/mcp-ui-negative/*.json
+            .work/desktop/.tmp/screenshots/integrations/*.png
+            .work/desktop/.tmp/work/mcp-ui-negative/*.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Upload native update review screenshots
@@ -195,7 +214,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-updates-${{ matrix.shard }}
-          path: .tmp/screenshots/updates/*.png
+          path: .work/desktop/.tmp/screenshots/updates/*.png
           if-no-files-found: ignore
           retention-days: 14
       - name: Run desktop temporary Git worktree journey
@@ -207,7 +226,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-worktree-playwright-test-results
-          path: test-results-desktop-worktrees/
+          path: .work/desktop/test-results-desktop-worktrees/
           retention-days: 14
       - name: Run actual attended project shift journeys
         if: matrix.shard == 1
@@ -218,7 +237,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-shift-playwright-test-results
-          path: test-results/desktop-shifts/
+          path: .work/desktop/test-results/desktop-shifts/
           retention-days: 14
       - name: Run desktop original Start recovery after an owned hearth restart
         if: matrix.shard == 1
@@ -229,11 +248,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: desktop-restart-playwright-test-results
-          path: test-results-desktop-restart/
+          path: .work/desktop/test-results-desktop-restart/
           retention-days: 14
 
   # Stable name for branch protection; skipped/cancelled shards must fail it.
   playwright:
+    defaults:
+      run:
+        working-directory: .
     name: Playwright
     needs: e2e
     if: ${{ always() }}

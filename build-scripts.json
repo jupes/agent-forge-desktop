@@ -1,0 +1,11 @@
+{
+  "test": "bun test ./scripts ./apps/desktop/src --timeout 15000",
+  "lint": "biome check scripts .claude/hooks .claude/skills types docs/js apps/desktop/src",
+  "desktop:build": "bun run scripts/desktop/build.ts",
+  "desktop:smoke": "bun run scripts/desktop/smoke.ts",
+  "verify:desktop": "playwright test --config playwright.desktop.config.ts",
+  "verify:desktop-worktrees": "playwright test --config playwright.desktop-worktrees.config.ts",
+  "verify:desktop-shifts": "playwright test --config playwright.desktop-shifts.config.ts",
+  "verify:desktop-restart": "playwright test --config playwright.desktop-restart.config.ts",
+  "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json"
+}

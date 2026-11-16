@@ -10,7 +10,7 @@ const result = {
   checkedAt: "2026-11-10T00:00:00Z",
   release: {
     tag: "v1.0.0",
-    url: "https://github.com/jupes/agent-forge-harness/releases/tag/v1.0.0",
+    url: "https://github.com/jupes/agent-forge-desktop/releases/tag/v1.0.0",
     publishedAt: "2026-11-01T00:00:00Z",
   },
 };

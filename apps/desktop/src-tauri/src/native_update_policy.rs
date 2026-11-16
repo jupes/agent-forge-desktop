@@ -4,7 +4,7 @@ use serde_json::Value;
 use url::Url;
 
 pub const ENDPOINT: &str =
-    "https://github.com/jupes/agent-forge-harness/releases/latest/download/latest.json";
+    "https://github.com/jupes/agent-forge-desktop/releases/latest/download/latest.json";
 pub const TARGET: &str = "windows-x86_64-nsis";
 pub const METADATA_LIMIT: usize = 64 * 1024;
 pub const PACKAGE_LIMIT: usize = 256 * 1024 * 1024;
@@ -30,7 +30,7 @@ pub fn publisher_transport(url: &Url) -> bool {
         && match url.host_str() {
             Some("github.com") => url
                 .path()
-                .starts_with("/jupes/agent-forge-harness/releases/"),
+                .starts_with("/jupes/agent-forge-desktop/releases/"),
             Some("release-assets.githubusercontent.com") => true,
             _ => false,
         }
@@ -38,7 +38,7 @@ pub fn publisher_transport(url: &Url) -> bool {
 
 pub fn package_url(raw: &str, version: &str) -> Result<Url, ()> {
     let url = Url::parse(raw).map_err(|_| ())?;
-    let prefix = format!("/jupes/agent-forge-harness/releases/download/v{version}/");
+    let prefix = format!("/jupes/agent-forge-desktop/releases/download/v{version}/");
     let file = url.path().strip_prefix(&prefix).ok_or(())?;
     if !publisher_transport(&url)
         || url.host_str() != Some("github.com")
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn only_the_official_https_publisher_can_redirect_or_supply_a_version_bound_installer() {
-        let good = "https://github.com/jupes/agent-forge-harness/releases/download/v1.0.0/Agent%20Forge%20Harness_1.0.0_x64-setup.exe";
+        let good = "https://github.com/jupes/agent-forge-desktop/releases/download/v1.0.0/Agent%20Forge%20Harness_1.0.0_x64-setup.exe";
         assert!(package_url(good, "1.0.0").is_ok());
         for bad in [
             good.replace("https:", "http:"),
@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn missing_wrong_platform_prerelease_and_oversized_metadata_refuse() {
-        let raw = json!({"version":"1.0.0","platforms":{"windows-x86_64-nsis":{"url":"https://github.com/jupes/agent-forge-harness/releases/download/v1.0.0/Forge_1.0.0_x64-setup.exe","signature":"fixture"}}});
+        let raw = json!({"version":"1.0.0","platforms":{"windows-x86_64-nsis":{"url":"https://github.com/jupes/agent-forge-desktop/releases/download/v1.0.0/Forge_1.0.0_x64-setup.exe","signature":"fixture"}}});
         assert!(stable_manifest(&serde_json::to_vec(&raw).unwrap()).is_ok());
         for version in ["1.0.0-rc.1", "1.0.0+other", "v1.0.0", "other"] {
             let mut bad = raw.clone();

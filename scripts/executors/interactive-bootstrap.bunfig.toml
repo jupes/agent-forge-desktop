@@ -1,3 +1,0 @@
-# Explicit configuration for the trusted source bootstrap.
-env = false
-preload = []

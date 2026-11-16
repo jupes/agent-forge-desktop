@@ -266,7 +266,7 @@ test("Updates makes no automatic request and checks a reported stable release on
             checkedAt: "2026-11-10T00:00:00Z",
             release: {
               tag: "v1.0.0",
-              url: "https://github.com/jupes/agent-forge-harness/releases/tag/v1.0.0",
+              url: "https://github.com/jupes/agent-forge-desktop/releases/tag/v1.0.0",
               publishedAt: "2026-11-01T00:00:00Z",
             },
           },
@@ -304,7 +304,7 @@ test("Updates makes no automatic request and checks a reported stable release on
     ).toBeVisible();
     const url = updates.getByLabel("Official release URL", { exact: true });
     await expect(url).toHaveValue(
-      "https://github.com/jupes/agent-forge-harness/releases/tag/v1.0.0",
+      "https://github.com/jupes/agent-forge-desktop/releases/tag/v1.0.0",
     );
     await expect(url).toHaveAttribute("readonly", "");
     await expect(
@@ -347,7 +347,7 @@ test("an unavailable update check retains and labels the last reported release w
                   checkedAt: "2026-11-10T00:00:00Z",
                   release: {
                     tag: "v1.0.0",
-                    url: "https://github.com/jupes/agent-forge-harness/releases/tag/v1.0.0",
+                    url: "https://github.com/jupes/agent-forge-desktop/releases/tag/v1.0.0",
                     publishedAt: "2026-11-01T00:00:00Z",
                   },
                 }
@@ -384,7 +384,7 @@ test("an unavailable update check retains and labels the last reported release w
   await expect(
     updates.getByLabel("Official release URL", { exact: true }),
   ).toHaveValue(
-    "https://github.com/jupes/agent-forge-harness/releases/tag/v1.0.0",
+    "https://github.com/jupes/agent-forge-desktop/releases/tag/v1.0.0",
   );
   expect(calls).toBe(2);
 });

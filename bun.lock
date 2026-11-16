@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agent-forge-harness",
+      "name": "agent-forge-desktop",
       "dependencies": {
         "@modelcontextprotocol/server": "^2.0.0",
         "@phosphor-icons/core": "^2.1.1",

@@ -16,7 +16,7 @@ operator.action audit and an exact scope-bound private authorization ticket.
 Only three fixed ticket filenames are retained, one per operation.
 
 The fixed channel is:
-https://github.com/jupes/agent-forge-harness/releases/latest/download/latest.json
+https://github.com/jupes/agent-forge-desktop/releases/latest/download/latest.json
 It must supply a stable numeric SemVer and a windows-x86_64-nsis platform entry.
 The package URL must name this repository, that exact vVERSION release and an
 x64 NSIS setup executable. HTTPS redirects are limited to this repository's

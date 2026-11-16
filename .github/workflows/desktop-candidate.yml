@@ -3,6 +3,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/desktop-candidate.yml'
+      - 'engine.lock.json'
+      - 'product.json'
+      - 'tools/**'
+      - 'overlays/**'
+      - 'build-scripts.json'
       - 'apps/desktop/**'
       - 'scripts/desktop/**'
       - 'scripts/hearth/**'
@@ -15,6 +20,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+defaults:
+  run:
+    working-directory: .work/desktop
 concurrency:
   group: desktop-candidate-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
@@ -30,16 +38,19 @@ jobs:
     defaults:
       run:
         shell: pwsh
+        working-directory: .work/desktop
     env:
       CANDIDATE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          submodules: true
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - name: Verify build tools
+        working-directory: .
         timeout-minutes: 2
         run: |
           $ErrorActionPreference = 'Stop'
@@ -48,8 +59,12 @@ jobs:
           cargo --version
           if ($LASTEXITCODE -ne 0) { throw 'Cargo unavailable' }
       - name: Install pinned Rust formatting component
+        working-directory: .
         timeout-minutes: 3
         run: rustup component add rustfmt --toolchain "$env:RUSTUP_TOOLCHAIN"
+      - name: Assemble pinned engine and desktop sources
+        working-directory: .
+        run: bun tools/workspace.ts
       - name: Install locked dependencies
         timeout-minutes: 5
         run: bun install --frozen-lockfile
@@ -70,9 +85,11 @@ jobs:
         timeout-minutes: 3
         run: |
           $ErrorActionPreference = 'Stop'
-          $head = git rev-parse HEAD
+          $source = Get-Content -LiteralPath .forge-desktop-source.json -Raw | ConvertFrom-Json
+          $head = $source.desktopCommit
+          $buildHead = git rev-parse HEAD
           if ($LASTEXITCODE -ne 0 -or $head -ne $env:CANDIDATE_SOURCE_SHA) { throw 'Source identity mismatch' }
-          $tree = git rev-parse 'HEAD^{tree}'
+          $tree = git -C ../.. rev-parse 'HEAD^{tree}'
           if ($LASTEXITCODE -ne 0) { throw 'Source tree unavailable' }
           git diff --exit-code -- apps/desktop/src-tauri/Cargo.lock bun.lock package.json
           if ($LASTEXITCODE -ne 0) { throw 'Build changed locked dependencies' }
@@ -105,6 +122,9 @@ jobs:
             kind = 'portable-engineering-candidate'
             sourceCommit = $head
             sourceTree = $tree
+            engineCommit = $source.engineCommit
+            buildCommit = $buildHead
+            desktopSourceDigest = $source.sourceDigest
             runId = $env:GITHUB_RUN_ID
             runAttempt = $env:GITHUB_RUN_ATTEMPT
             platform = 'windows-x64'
@@ -122,7 +142,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: agent-forge-1.0.0-rc.1-windows-x64-${{ env.CANDIDATE_SOURCE_SHA }}
-          path: apps/desktop/build/windows-x64/
+          path: .work/desktop/apps/desktop/build/windows-x64/
           if-no-files-found: error
           include-hidden-files: true
           compression-level: 0

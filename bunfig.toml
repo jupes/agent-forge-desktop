@@ -1,6 +1,0 @@
-[test]
-root = "scripts"
-preload = ["./scripts/hearth/test-preload.ts", "./scripts/ledger/test-preload.ts"]
-pathIgnorePatterns = [
-  "repos/a2ui/samples/client/angular/**",
-]
