@@ -44,7 +44,10 @@ async function initialize() {
     ["bd", BD_STAND_IN_SOURCE],
     ["git", GIT_STAND_IN_SOURCE],
     ["claude", resolve("tests/desktop-restart-e2e/claude-stand-in.ts")],
-    ["codex", resolve("tests/desktop-e2e/codex-chat-cli-stand-in.ts")],
+    [
+      "codex",
+      resolve("scripts/sessions/fixtures/codex-desktop-cli-stand-in.ts"),
+    ],
   ];
   for (const [name, source] of programs) {
     const executable = join(

@@ -104,7 +104,7 @@ export default async function setup(): Promise<void> {
     [
       "build",
       "--compile",
-      resolve("tests/desktop-e2e/codex-chat-cli-stand-in.ts"),
+      resolve("scripts/sessions/fixtures/codex-desktop-cli-stand-in.ts"),
       "--outfile",
       join(
         BD_STAND_IN_BIN,
