@@ -1,6 +1,7 @@
 name: Quality
 on:
   pull_request:
+  workflow_dispatch:
   push:
     branches: [master, main]
 permissions:
@@ -264,3 +265,7 @@ jobs:
     timeout-minutes: 1
     steps:
       - run: test "${{ needs.e2e.result }}" = "success"
+
+  native:
+    name: Windows candidate
+    uses: ./.github/workflows/desktop-candidate.yml

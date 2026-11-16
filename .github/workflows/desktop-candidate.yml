@@ -1,22 +1,6 @@
 name: Desktop candidate
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/desktop-candidate.yml'
-      - 'engine.lock.json'
-      - 'product.json'
-      - 'tools/**'
-      - 'overlays/**'
-      - 'build-scripts.json'
-      - 'apps/desktop/**'
-      - 'scripts/desktop/**'
-      - 'scripts/hearth/**'
-      - 'scripts/distribution/**'
-      - 'docs/**'
-      - 'types/**'
-      - 'package.json'
-      - 'bun.lock'
-      - 'vite.dashboard.config.ts'
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read

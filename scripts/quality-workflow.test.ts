@@ -103,7 +103,7 @@ test("the concurrency group is the PR number for pull requests and the run id fo
 test("one workflow-level Bun version feeds every action and npm runtime installation", () => {
   expect(workflow.env["BUN_VERSION"]).toMatch(/^\d+\.\d+\.\d+$/);
   const setups = Object.values(workflow.jobs).flatMap((job) =>
-    job.steps.filter((step) => step.uses === "oven-sh/setup-bun@v2"),
+    (job.steps ?? []).filter((step) => step.uses === "oven-sh/setup-bun@v2"),
   );
   expect(setups).toHaveLength(2);
   for (const step of setups) {
@@ -138,7 +138,7 @@ test("one workflow-level Bun version feeds every action and npm runtime installa
 
 test("every dependency install first restores a Bun download cache keyed by OS, that Bun version and the lockfile", () => {
   const installs = Object.values(workflow.jobs).filter((job) =>
-    job.steps.some((step) => step.run === "bun install --frozen-lockfile"),
+    (job.steps ?? []).some((step) => step.run === "bun install --frozen-lockfile"),
   );
   expect(installs).toHaveLength(3);
   for (const job of installs) {
