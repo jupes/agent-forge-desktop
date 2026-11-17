@@ -1,7 +1,17 @@
 # Agent Forge full 1.0 release guide
 
-Current engineering source: PR507, 2026-11-15, draft and unmerged. The candidate
-now mounts all nine Inbox classes and usage thresholds, checkpoint Council
+The candidate workflow also compiles a separate unsigned NSIS review packet
+from the already-built binaries. It adds the staged legal files and inventories
+through a resources-only bundle overlay. It never launches the installer or app.
+See [the installer review guide](manual-installer-candidate.md). Signing,
+installer/runtime and human acceptance remain open until separately observed.
+
+The desktop source now lives in `jupes/agent-forge-desktop`, with an immutable
+engine pin recorded in `engine.lock.json`. Harness PR507 and desktop PRs2–4 are
+merged; those changes include direct Quit, owned startup retirement and the
+appearance Save correction. Identify each packet by its CANDIDATE.json and
+INSTALLER-CANDIDATE.json source commits and exact-head hosted checks. The source
+mounts all nine Inbox classes and usage thresholds, checkpoint Council
 return, session pop-outs, scoped product links, reviewed MCP client registration
 and explicit signed native updates. The ordinary build has no publisher key.
 Use CANDIDATE.json and its exact-head hosted checks to identify a test packet;
@@ -102,7 +112,7 @@ or raw diagnostic homes into a release packet or issue.
 The distribution must retain the exact repository `LICENSE`, `NOTICE`,
 `.claude/skills/ATTRIBUTION.md` and `docs/fonts/LICENSE-Inter.txt`, with
 `DISTRIBUTION-NOTICES.txt`. [The desktop README](../README.md) owns the build
-commands; [the notices producer](https://github.com/jupes/agent-forge-harness/blob/872b15494da405aea3f175652a74aba2669ef490/scripts/distribution/notices.ts)
+commands; [the notices producer](https://github.com/jupes/agent-forge-harness/blob/3e5783fd3f7cd4d803b282ab2c8e67de6d2ffb75/scripts/distribution/notices.ts)
 owns their required contents. Cargo and compiled-sidecar inventories add their
 originals; [pinned Bun originals](runtime-notices.md) prepare runtime review.
 Their explicit coverage holds and actual installer contents remain open.
@@ -173,7 +183,7 @@ See [provider readiness](provider-readiness-contract.md),
 A verified Refused outcome under that specific action's contract means no
 committed action. A generic error or non-success response after dispatch is not
 that proof and can remain Unknown, as can a lost, timed-out or malformed answer.
-Use the [action-outcome contract](https://github.com/jupes/agent-forge-harness/blob/872b15494da405aea3f175652a74aba2669ef490/docs/js/action-outcome.ts) and that
+Use the [action-outcome contract](https://github.com/jupes/agent-forge-harness/blob/3e5783fd3f7cd4d803b282ab2c8e67de6d2ffb75/docs/js/action-outcome.ts) and that
 action's owning original/receipt rules. Retain its original identity, inspect the
 matching protected original/receipt and follow that action's recovery control.
 Do not turn a matching current value into proof of an earlier delivery.
@@ -194,8 +204,8 @@ demonstration as proof of the current foreground lifecycle.
 
 ## Current required feature and evidence matrix
 
-The implementation column distinguishes accepted source and the current
-unmerged engineering candidate. Neither is full release acceptance. Open gates
+The implementation column records accepted source and the remaining candidate
+qualification work. Full release acceptance remains open. Open gates
 remain required unless the scope table explicitly defers them.
 
 | Required 1.0 area | Implementation/evidence owner and accepted source | Remaining gate |

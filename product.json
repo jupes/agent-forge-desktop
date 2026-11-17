@@ -796,6 +796,9 @@
     "tests/desktop-worktree-e2e/vite.config.ts",
     "tools/run.ts",
     "tools/workspace.ts",
-    "tsconfig.tools.json"
+    "tsconfig.tools.json",
+    "scripts/desktop/installer-candidate.ts",
+    "scripts/desktop/installer-candidate.test.ts",
+    "apps/desktop/docs/manual-installer-candidate.md"
   ]
 }
