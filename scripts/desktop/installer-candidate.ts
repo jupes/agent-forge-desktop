@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { isMain } from "../is-main";
 
 export interface InstallerResource {
   path: string;
@@ -362,7 +363,7 @@ async function main(): Promise<void> {
   );
 }
 
-if (import.meta.main) {
+if (isMain(import.meta)) {
   main().catch((error: unknown) => {
     console.error(
       JSON.stringify({
