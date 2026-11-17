@@ -141,3 +141,35 @@ jobs:
           "Portable candidate: $env:ARTIFACT_URL" >> $env:GITHUB_STEP_SUMMARY
           "Artifact SHA256: $env:ARTIFACT_SHA256" >> $env:GITHUB_STEP_SUMMARY
           'Engineering build only. Read MANUAL-TESTING.md; native/manual acceptance remains pending.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Compile unsigned installer review candidate without launching it
+        timeout-minutes: 8
+        run: bun scripts/desktop/installer-candidate.ts
+      - name: Upload installer review candidate
+        id: installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-forge-installer-${{ steps.identity.outputs.product_version }}-windows-x64-${{ env.CANDIDATE_SOURCE_SHA }}
+          path: .work/desktop/apps/desktop/build/installer-candidate/
+          if-no-files-found: error
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 14
+      - name: Publish installer review identity
+        env:
+          INSTALLER_URL: ${{ steps.installer.outputs.artifact-url }}
+          INSTALLER_SHA256: ${{ steps.installer.outputs.artifact-digest }}
+        run: |
+          "Installer review candidate: $env:INSTALLER_URL" >> $env:GITHUB_STEP_SUMMARY
+          "Artifact SHA256: $env:INSTALLER_SHA256" >> $env:GITHUB_STEP_SUMMARY
+          'Unsigned; installer and app were not launched. Read INSTALLER-TESTING.md; signing, native/manual and redistribution acceptance remain pending.' >> $env:GITHUB_STEP_SUMMARY
+      - name: Preserve installer compiler inputs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-build-evidence-${{ env.CANDIDATE_SOURCE_SHA }}
+          path: |
+            .work/desktop/apps/desktop/build/installer-candidate/bundle-config.json
+            .work/desktop/apps/desktop/src-tauri/target/release/nsis/x64/*.nsi
+            .work/desktop/apps/desktop/src-tauri/target/release/nsis/x64/*.nsh
+          if-no-files-found: warn
+          retention-days: 14
