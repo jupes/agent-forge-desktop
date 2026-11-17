@@ -62,8 +62,9 @@ export function AppStartupView({
       )}
       {state.data?.capability === "unsupported" && (
         <p>
-          Startup registration is unavailable from this window. Use the
-          installed Windows desktop app with a supported executable path.
+          {state.data.reason === "install-required"
+            ? "Install this app to manage launch at Windows login. Portable copies do not create startup registration."
+            : "Startup registration is unavailable from this window. Use the installed Windows desktop app with a supported executable path."}
         </p>
       )}
       {data && (

@@ -14,23 +14,23 @@
   },
   "bundle": {
     "active": true,
-    "icon": [
-      "icons/icon.ico"
-    ],
-    "externalBin": [
-      "binaries/desktop-host",
-      "binaries/hearth"
-    ],
+    "icon": ["icons/icon.ico"],
+    "externalBin": ["binaries/desktop-host", "binaries/hearth"],
     "resources": {
       "../../../docs/dist/": "dashboard/"
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "nsis": {
+        "installMode": "currentUser",
+        "template": "installer/installer.nsi"
+      }
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": [
-          "agent-forge"
-        ]
+        "schemes": ["agent-forge"]
       }
     },
     "updater": {

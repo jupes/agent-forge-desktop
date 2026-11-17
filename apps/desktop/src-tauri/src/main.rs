@@ -15,6 +15,11 @@ mod registration_context;
 mod session_window;
 mod startup;
 #[cfg(windows)]
+mod startup_coordination_windows;
+mod startup_lifecycle;
+#[cfg(windows)]
+mod startup_package_windows;
+#[cfg(windows)]
 mod startup_windows;
 mod tray;
 mod workspace;
@@ -526,6 +531,36 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() {
     let args: Vec<_> = env::args_os().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--startup-lifecycle") {
+        let operation = if args.len() == 2 {
+            match args[1].to_str() {
+                Some("activate") => Ok(startup_lifecycle::Operation::Activate),
+                Some("retire") => Ok(startup_lifecycle::Operation::Retire),
+                _ => Err(()),
+            }
+        } else {
+            Err(())
+        };
+        #[cfg(windows)]
+        let package_guard = startup_package_windows::inherited_guard();
+        #[cfg(windows)]
+        let result = package_guard.as_ref().map_err(|_| ()).and_then(|guard| {
+            operation.and_then(|operation| startup_windows::lifecycle(operation, guard))
+        });
+        #[cfg(not(windows))]
+        let result: Result<serde_json::Value, ()> = operation.and(Err(()));
+        let (code, answer) = match result {
+            Ok(data) => (0, serde_json::json!({"ok":true,"data":data,"error":null})),
+            Err(()) => (
+                1,
+                serde_json::json!({"ok":false,"data":null,"error":"Startup lifecycle is held or unavailable. Preserve the installation and original state; do not repeat an unknown operation."}),
+            ),
+        };
+        let _ = writeln!(std::io::stdout().lock(), "{answer}");
+        // Keep the inherited presence object on success AND failure until the
+        // actual process exits. No GUI, worker or fallback is reachable here.
+        std::process::exit(code);
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--startup-registration")

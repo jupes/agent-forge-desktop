@@ -176,7 +176,8 @@ fn file_from(handle: RawHandle) -> Result<File, Refusal> {
     Ok(unsafe { File::from_raw_handle(handle) })
 }
 fn normal_open(path: &Path, directory: bool) -> Result<File, Refusal> {
-    let access = if directory { 0x80 } else { READ };
+    // Attribute-only opens do not enforce the intended sharing exclusion.
+    let access = READ;
     // Parent handles deny DELETE through commit. A review read denies WRITE.
     let share = if directory { 3 } else { 5 };
     let flags = OPEN_REPARSE | if directory { BACKUP } else { 0 };
@@ -363,7 +364,13 @@ fn prepare_with_security(
             &reviewed.path,
             &transaction,
             reviewed.file.is_none(),
-            null(),
+            // A new owner-private target must be private at first visibility,
+            // just like its receipt. Existing target ACLs are never rewritten.
+            if reviewed.file.is_none() {
+                security
+            } else {
+                null()
+            },
         )?;
         let actual_id = identity(&file, false)?;
         if reviewed.file.is_some_and(|id| id != actual_id)
@@ -548,6 +555,29 @@ mod tests {
         assert_eq!(
             std::fs::read(box_.path("client.json")).unwrap(),
             b"new settings"
+        );
+    }
+    #[test]
+    fn retained_parent_data_read_handles_exclude_directory_rename_until_release() {
+        let box_ = Scratch::new();
+        let parent = box_.path("profile");
+        std::fs::create_dir(&parent).unwrap();
+        let target = parent.join("client.json");
+        std::fs::write(&target, b"original").unwrap();
+        let pending = prepare(
+            review(&target).unwrap(),
+            b"new",
+            review(&box_.path("receipt.json")).unwrap(),
+            b"exact receipt",
+        )
+        .ok()
+        .unwrap();
+        assert!(std::fs::rename(&parent, box_.path("moved")).is_err());
+        drop(pending);
+        std::fs::rename(&parent, box_.path("moved")).unwrap();
+        assert_eq!(
+            std::fs::read(box_.path("moved").join("client.json")).unwrap(),
+            b"original"
         );
     }
     #[test]

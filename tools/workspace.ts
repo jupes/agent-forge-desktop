@@ -52,6 +52,12 @@ function safe(file: string): string {
   return target;
 }
 
+async function requireTracked(paths: string[]): Promise<void> {
+  const tracked = new Set((await git(["ls-files", "-z"], workspace)).split("\0"));
+  const missing = paths.filter((file) => !tracked.has(file));
+  if (missing.length) throw Error(`Generated workspace has untracked owned source: ${missing.join(", ")}`);
+}
+
 export async function prepare(): Promise<string> {
   const lock = await json(join(root, "engine.lock.json"));
   if (lock.repository !== "https://github.com/jupes/agent-forge-harness.git" ||
@@ -65,6 +71,7 @@ export async function prepare(): Promise<string> {
   }
   const owned = await json(join(root, "product.json"));
   if (!Array.isArray(owned.paths) || !owned.paths.every((p) => typeof p === "string")) throw Error("Invalid desktop ownership manifest");
+  const requiredTracked = [...new Set([...(owned.paths as string[]), "docs/js/main.tsx", "bun.lock", "package.json", ".forge-desktop-source.json"])];
   const desktopCommit = (await git(["rev-parse", "HEAD"])).trim();
   const desktopPackage = await json(join(root, "package.json"));
   const desktopVersion = desktopPackage.version;
@@ -87,6 +94,7 @@ export async function prepare(): Promise<string> {
   try {
     const existing = await json(join(workspace, ".forge-desktop-source.json"));
     if (existing.engineCommit === actualEngine && existing.desktopCommit === desktopCommit && existing.sourceDigest === sourceDigest) {
+      await requireTracked(requiredTracked);
       if ((await git(["status", "--porcelain", "--untracked-files=no"], workspace)).trim()) throw Error("Generated workspace has edits; preserve them before preparing again");
       return workspace;
     }
@@ -120,6 +128,11 @@ export async function prepare(): Promise<string> {
   const source = { schemaVersion: 1, desktopCommit, desktopVersion, engineCommit: actualEngine, engineVersion, sourceDigest, files };
   await writeFile(join(workspace, ".forge-desktop-source.json"), JSON.stringify(source, null, 2) + "\n");
   await git(["add", "--all"], workspace);
+  // Engine ignore rules must not hide desktop-owned source from edit detection.
+  const pathspec = join(root, ".work", `stage-${sourceDigest}.paths`);
+  await writeFile(pathspec, requiredTracked.join("\0") + "\0");
+  await git(["--literal-pathspecs", "add", "--force", `--pathspec-from-file=${pathspec}`, "--pathspec-file-nul"], workspace);
+  await requireTracked(requiredTracked);
   await git(["-c", "user.name=Forge build assembly", "-c", "user.email=build@agentforge.invalid", "-c", "core.hooksPath=", "commit", "--no-gpg-sign", "-m", `build: assemble desktop ${desktopCommit} with engine ${actualEngine}`], workspace);
   return workspace;
 }

@@ -1,6 +1,6 @@
 {
   "test": "bun test ./scripts ./apps/desktop/src --timeout 15000",
-  "lint": "biome check scripts .claude/hooks .claude/skills types docs/js apps/desktop/src",
+  "lint": "biome check --vcs-enabled=false scripts .claude/hooks .claude/skills types docs/js apps/desktop/src",
   "desktop:build": "bun run scripts/desktop/build.ts",
   "desktop:smoke": "bun run scripts/desktop/smoke.ts",
   "verify:desktop": "playwright test --config playwright.desktop.config.ts",
