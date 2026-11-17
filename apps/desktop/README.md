@@ -252,7 +252,7 @@ Multi-workspace Source authorization and Scope editing, OS notification delivery
 notification master/quiet hours controls and background tray keep-alive are
 planned for 1.1. Their implementations and historical evidence are retained,
 but the 1.0 production entries do not activate them. Closing the foreground
-window uses the existing explicit quit confirmation. If its owned Hearth fails,
+window quits directly through the owned-host shutdown path. If its owned Hearth fails,
 the host cleans up and exits without pulling focus; relaunch the app to recover.
 
 The local complete-tracker reader remains a core prerequisite for project work.

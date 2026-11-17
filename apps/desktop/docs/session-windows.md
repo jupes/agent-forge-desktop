@@ -1,6 +1,6 @@
 # Session windows
 
-Source is integrated for the 1.0 candidate. Earlier native qualification is **FAILED/HOLD**; current packaged IPC, child close, main Cancel/Quit and host-failure behavior still need actual Windows acceptance. Two prior app launches remain charged; no further native run is authorized by this guide.
+Source is integrated for the 1.0 candidate. Earlier native qualification is **FAILED/HOLD**; current packaged IPC, child close, main Close/Quit and host-failure behavior still need actual Windows acceptance. Two prior app launches remain charged; no further native run is authorized by this guide.
 
 In the Windows app, open a session and choose **Pop out session**. The compact
 window shows that exact project and session without the main navigation rails
@@ -24,8 +24,8 @@ checks. The main window keeps its existing conversation stream. Unused Keeper
 streams do not run in compact windows.
 
 Closing a compact window leaves the session and Hearth running. Closing the
-main window asks whether to quit the app and its owned Hearth; Cancel keeps
-all windows running. Confirmed Quit closes all windows. If the owned host fails,
+main window quits the app and its owned Hearth directly, without a confirmation
+dialog, and closes all windows. If the owned host fails,
 the foreground app closes its windows and requires an explicit relaunch.
 
 Use the main window to navigate elsewhere. Changing a compact address makes

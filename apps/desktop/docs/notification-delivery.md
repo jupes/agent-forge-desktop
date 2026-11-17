@@ -112,10 +112,9 @@ Close button hide the SAME living WebView; the selected-project observer and
 its explicit window opt-in remain active. It does not create a second stream,
 watch other projects, bypass quiet hours or restart notification history. Open
 shows that window and is the only tray path that focuses it. Quit and unchecked
-Close ask a native OK/Cancel question, defaulting to Cancel, warning that work in
-the owned hearth may be interrupted. No running count is guessed and no shift
-is approved, restarted or independently stopped. Confirmed Quit uses the existing
-owned-host shutdown; cancellation leaves it running.
+Close use the existing owned-host shutdown directly, without a confirmation
+dialog. Work in the owned hearth may be interrupted. No shift is approved,
+restarted or independently stopped.
 
 After a host failure, exact-owner cleanup happens before waiting for operator
 input. Recovery questions require an explicit native Open after failure; neither

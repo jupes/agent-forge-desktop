@@ -186,8 +186,8 @@ replay pending writes. An unknown restart keeps another restart held until
 the operator checks the Hearth and pending actions. Acknowledging the warning
 does not prove the restart succeeded.
 
-Foreground close uses explicit Quit confirmation; Cancel should keep the app
-and its work available. An owned host failure cleans up and exits passively;
+Foreground close quits directly without a confirmation dialog, using the
+existing owned-host shutdown path. An owned host failure cleans up and exits passively;
 recovery is an explicit relaunch. These are required native behaviors with
 remaining qualification holds. Do not use the historical retry-dialog/tray
 demonstration as proof of the current foreground lifecycle.
@@ -312,7 +312,7 @@ each observed case:
 5. Verify all required Inbox classes, Activity object tabs, palette scope/actions,
    supplied light states, pop-out synchronization/limits and all three cold/warm
    deep-link kinds once those features are included in the qualified candidate.
-6. Cancel close, then confirm Quit; verify exact owned-process cleanup and no
+6. Close the main window once, without a confirmation dialog; verify exact owned-process cleanup and no
    foreign termination. Exercise the reviewed owned-host-failure and relaunch
    case separately. Do not call forced cleanup a successful Quit.
 7. Confirm no1.1 OS notification permission, quiet-hours/master or keep-alive

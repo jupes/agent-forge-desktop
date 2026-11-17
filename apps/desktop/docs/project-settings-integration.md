@@ -88,8 +88,9 @@ reset or authorize historical native probe attempts.
 4. Explicitly enable window interruptions and saved project event preferences.
    Exercise halted shift, failed gate, finished council verdict and still-backed
    proposed bead. Verify app master off/quiet hours/Pause suppression and Open
-   revalidation. Opt into tray keep-alive, close/open the same window, cancel
-   Quit, then confirm Quit. Background failure must not pull focus.
+   revalidation. Opt into tray keep-alive, close/open the same window, then choose
+   Quit once; it must shut down without a confirmation dialog. Background failure
+   must not pull focus.
 5. Check keyboard traversal, labels, status/alert announcements, long workspace
    paths, narrow layout and disabled/error/unknown states across the sections.
 
