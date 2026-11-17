@@ -28,12 +28,16 @@ pub enum HelperCommand {
     Set {
         enabled: bool,
         expected: Registration,
+        installation_key: String,
     },
 }
 pub fn parse_arguments(args: &[&str]) -> Result<HelperCommand, ()> {
     match args {
         ["--startup-registration", "read"] => Ok(HelperCommand::Read),
-        ["--startup-registration", "set", desired, expected] => {
+        ["--startup-registration", "set", desired, expected, key] => {
+            if !crate::startup_lifecycle::hex_key(key) {
+                return Err(());
+            }
             let enabled = match *desired {
                 "enabled" => true,
                 "disabled" => false,
@@ -44,7 +48,11 @@ pub fn parse_arguments(args: &[&str]) -> Result<HelperCommand, ()> {
                 "disabled" => Registration::Disabled,
                 _ => return Err(()),
             };
-            Ok(HelperCommand::Set { enabled, expected })
+            Ok(HelperCommand::Set {
+                enabled,
+                expected,
+                installation_key: (*key).into(),
+            })
         }
         _ => Err(()),
     }
@@ -167,6 +175,29 @@ mod tests {
             parse_arguments(&["--startup-registration", "read"]),
             Ok(HelperCommand::Read)
         );
+    }
+    #[test]
+    fn settings_set_requires_the_reviewed_generation_key_and_rejects_legacy_unbound_args() {
+        assert!(
+            parse_arguments(&["--startup-registration", "set", "enabled", "disabled"]).is_err()
+        );
+        let key = "a".repeat(64);
+        assert_eq!(
+            parse_arguments(&["--startup-registration", "set", "enabled", "disabled", &key]),
+            Ok(HelperCommand::Set {
+                enabled: true,
+                expected: Registration::Disabled,
+                installation_key: key.clone()
+            })
+        );
+        assert!(parse_arguments(&[
+            "--startup-registration",
+            "set",
+            "enabled",
+            "disabled",
+            &"A".repeat(64)
+        ])
+        .is_err());
     }
     #[test]
     fn foreign_malformed_and_stale_registration_is_never_modified() {

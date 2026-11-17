@@ -6,6 +6,12 @@ The checkbox only creates a draft. Cancel discards the draft without changing
 Windows. This app-wide setting applies to the current Windows user across
 projects, installations and custom Forge homes.
 
+Only an active installed generation can change this registration. Portable
+copies report that installation is required. Reinstallation changes the
+generation, so a delayed save from the retired installation remains refused.
+See [startup installation and uninstall](startup-uninstall.md) for the package
+boundary and verification still required.
+
 A login launch always opens the normal workspace chooser, even when its
 working directory is already a valid checkout. Cancelling starts no host or
 agent. No saved workspace grant, background window, tray keep-alive or provider
@@ -64,7 +70,8 @@ uninstall and human release acceptance need separate evidence. Required cleanup
 of this exact installation's entry during uninstall is tracked by
 agent-forge-harness-cla5.111.5 (owned startup-entry removal); it is not deferred
 to 1.1 or qualified by this Settings source change. The frozen installer kit
-does not include this source.
+does not include this source. The custom installer is now implemented and
+compile-checked; actual package and registry qualification remain pending.
 
 Primary platform references: [Microsoft Run and RunOnce keys](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys)
 documents the current-user key, command-length limit and delayed startup;

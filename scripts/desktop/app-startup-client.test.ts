@@ -298,3 +298,34 @@ test("unsupported startup is labelled explicitly and never rendered as a disable
   expect(client.canSave()).toBe(false);
   expect(attrs(findAll(view, "button")[0])["disabled"]).toBe(false);
 });
+
+test("portable startup explains installation without presenting a registration or Save", async () => {
+  const client = createAppStartupClient({
+    storage: storage(),
+    canAct: () => true,
+    requestId: () => id,
+    changed() {},
+    read: async () =>
+      answer({ capability: "unsupported", reason: "install-required" }),
+    post: async () => {
+      throw Error("MUST_NOT_POST");
+    },
+  });
+  await client.check();
+  const view = AppStartupView({
+    state: client.state,
+    connected: true,
+    editable: client.canEdit(),
+    saveable: client.canSave(),
+    check() {},
+    edit() {},
+    save() {},
+    discard() {},
+  });
+  expect(textOf(view)).toContain(
+    "Install this app to manage launch at Windows login",
+  );
+  expect(textOf(view)).not.toContain("Not registered");
+  expect(findAll(view, "input")).toHaveLength(0);
+  expect(client.canSave()).toBe(false);
+});

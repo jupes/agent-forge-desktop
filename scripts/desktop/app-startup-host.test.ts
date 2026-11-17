@@ -1,11 +1,12 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { startDesktopHost } from "../hearth/desktop-host";
 import { startTestHearth } from "../hearth/testing";
 import type {
   StartupBackend,
+  StartupObservation,
   StartupRegistration,
 } from "./app-startup-protocol";
 
@@ -25,7 +26,9 @@ async function fixture() {
   let registration: StartupRegistration = "disabled",
     writes = 0,
     reads = 0;
-  const backend: StartupBackend = {
+  const backend: Omit<StartupBackend, "read"> & {
+    read(signal: AbortSignal): Promise<StartupObservation>;
+  } = {
     read: async () => {
       reads++;
       return {
@@ -153,4 +156,17 @@ test("desktop startup audit refusal never reaches the native backend or creates 
     db.close();
     await f.close();
   }
+});
+
+test("native legacy corpus exactly matches its pinned engine contract", () => {
+  const canonical = readFileSync(
+    new URL("./fixtures/startup-legacy-records.json", import.meta.url),
+  );
+  const native = readFileSync(
+    new URL(
+      "../../apps/desktop/src-tauri/test-fixtures/startup-legacy-records.json",
+      import.meta.url,
+    ),
+  );
+  expect(native).toEqual(canonical);
 });

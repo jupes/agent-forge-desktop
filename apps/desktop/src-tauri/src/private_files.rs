@@ -301,7 +301,7 @@ pub fn directory(path: &Path, create: bool) -> Result<Directory, Unavailable> {
     let opened = file(unsafe {
         CreateFileW(
             wide(path).as_ptr(),
-            0x20080,
+            0x80020000,
             3,
             null(),
             3,
@@ -374,6 +374,23 @@ fn read_with(
 pub fn read(path: &Path, max: usize) -> Result<Vec<u8>, Unavailable> {
     read_with(path, max, false, false).map(|(_, _, bytes)| bytes)
 }
+/// A missing record is distinct from an unreadable, linked or foreign record.
+/// The caller retains the verified private parent while using the result.
+pub fn read_optional(path: &Path, max: usize) -> Result<Option<Vec<u8>>, Unavailable> {
+    match read(path, max) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(_)
+            if std::fs::symlink_metadata(path)
+                .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+pub fn principal_sid() -> Result<String, Unavailable> {
+    current_sid().map(|(_, text)| text)
+}
 /// Caller holds the protected private parent directory; inherited user/SYSTEM
 /// receipt ACEs are accepted only after same-handle owner and trustee validation.
 pub fn receipt(path: &Path, expected: &[u8]) -> bool {
@@ -410,6 +427,29 @@ impl CreationSecurity {
 pub struct Lease {
     _file: File,
     _pins: Vec<File>,
+}
+/// Pin the existing SQLite main file without interfering with either engine's
+/// read/write connection. DELETE remains denied. This does not acquire SQL locks.
+pub fn sqlite_pin(path: &Path) -> Result<Lease, Unavailable> {
+    let pins = config_publish::pin_path(path).map_err(|_| Unavailable)?;
+    let security = Security::new(false)?;
+    let opened = file(unsafe {
+        CreateFileW(
+            wide(path).as_ptr(),
+            0x80020000,
+            3,
+            null(),
+            3,
+            0x00200000,
+            null_mut(),
+        )
+    })?;
+    // Bun-created lock databases inherit the verified user/SYSTEM parent ACL.
+    security.verify(&opened, false, true)?;
+    Ok(Lease {
+        _file: opened,
+        _pins: pins,
+    })
 }
 /// Share-none is held through prepare/commit or through the entire recovery read.
 /// Existing locks are validated, never truncated, replaced or repaired.
@@ -506,5 +546,26 @@ mod tests {
         create(&path, b"exact metadata").unwrap();
         remove_exact(&path, b"exact metadata").unwrap();
         assert!(!path.exists());
+    }
+    #[test]
+    fn atomic_private_first_publication_protects_both_target_and_receipt() {
+        let box_ = Scratch::new();
+        let _guard = directory(&box_.0, true).unwrap();
+        let target = box_.0.join("manifest.json");
+        let receipt_path = box_.0.join("publication.json");
+        let security = creation_security().unwrap();
+        let pending = config_publish::prepare_private(
+            config_publish::review(&target).unwrap(),
+            b"private manifest",
+            config_publish::review(&receipt_path).unwrap(),
+            b"exact receipt",
+            &security,
+        )
+        .ok()
+        .unwrap();
+        assert!(!target.exists());
+        assert_eq!(pending.commit(), config_publish::Outcome::Confirmed);
+        assert_eq!(read(&target, 1024).unwrap(), b"private manifest");
+        assert_eq!(read(&receipt_path, 1024).unwrap(), b"exact receipt");
     }
 }

@@ -1,4 +1,8 @@
-use crate::startup::{self, Entry, HelperCommand, Outcome, Registration, Registry};
+use crate::startup::{Entry, HelperCommand, Registry};
+use crate::{
+    startup_coordination_windows::Context, startup_lifecycle::Operation,
+    startup_package_windows::PackageGuard,
+};
 use windows::{
     core::{w, PCWSTR},
     Win32::{
@@ -102,16 +106,8 @@ impl Registry for UserRegistry {
         }
     }
 }
-fn registration(value: Registration) -> &'static str {
-    match value {
-        Registration::Disabled => "disabled",
-        Registration::Enabled => "enabled",
-        Registration::Conflict => "conflict",
-    }
-}
-pub fn run(command: HelperCommand) -> Result<serde_json::Value, ()> {
+fn context() -> Result<Context, ()> {
     let exe = std::env::current_exe().map_err(|_| ())?;
-    let expected = startup::command(exe.to_str().ok_or(())?)?;
     // Resolve the actual OS user, independently of AGENT_FORGE_HOME and process-home overrides.
     let allocated = unsafe { SHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_DEFAULT, None) }
         .map_err(|_| ())?;
@@ -119,20 +115,20 @@ pub fn run(command: HelperCommand) -> Result<serde_json::Value, ()> {
     unsafe {
         CoTaskMemFree(Some(allocated.0.cast()));
     }
-    let directory = directory?;
+    Context::from_os(&exe, directory?)
+}
+pub fn run(command: HelperCommand) -> Result<serde_json::Value, ()> {
+    let context = context()?;
     let mut registry = UserRegistry;
-    let (outcome, observed) = match command {
-        HelperCommand::Read => ("read", Some(startup::inspect(&mut registry, &expected)?)),
+    match command {
+        HelperCommand::Read => context.read(&mut registry),
         HelperCommand::Set {
             enabled,
-            expected: prior,
-        } => match startup::set(&mut registry, &expected, prior, enabled) {
-            Outcome::Completed(value) => ("completed", Some(value)),
-            Outcome::Refused(value) => ("refused", Some(value)),
-            Outcome::Unconfirmed => ("unconfirmed", None),
-        },
-    };
-    Ok(
-        serde_json::json!({ "version":1, "expectedCommand":expected, "coordinationParent":directory, "outcome":outcome, "registration":observed.map(registration) }),
-    )
+            expected,
+            installation_key,
+        } => context.set(&mut registry, enabled, expected, &installation_key),
+    }
+}
+pub fn lifecycle(operation: Operation, package: &PackageGuard) -> Result<serde_json::Value, ()> {
+    context()?.lifecycle(&mut UserRegistry, operation, package)
 }
