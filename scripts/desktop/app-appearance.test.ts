@@ -225,3 +225,87 @@ test("appearance CAS serializes simultaneous windows without a lost update", asy
   ]);
   expect(store.read().revision).toBe(1);
 });
+
+test("background appearance read cannot swallow a save of an edited draft", async () => {
+  let saved = {
+    version: 1,
+    revision: 14,
+    source: "machine",
+    appearance: { theme: "light", density: "compact" },
+  };
+  let release = (_value: unknown) => {};
+  const backgroundRead = new Promise<unknown>((resolve) => {
+    release = resolve;
+  });
+  let blockRead = false;
+  let reads = 0;
+  let posts = 0;
+  const client = createAppAppearanceClient({
+    read: async () => {
+      reads++;
+      return blockRead ? backgroundRead : saved;
+    },
+    post: async () => {
+      posts++;
+      saved = {
+        ...saved,
+        revision: 15,
+        appearance: { theme: "dark", density: "compact" },
+      };
+      return Response.json({ ok: true, data: saved, error: null });
+    },
+    canWrite: () => true,
+    changed() {},
+  });
+  await client.check();
+  client.edit({ theme: "dark", density: "compact" });
+  blockRead = true;
+  const refresh = client.check({ background: true });
+  blockRead = false;
+  try {
+    await client.save();
+    expect(posts).toBe(1);
+    expect(reads).toBe(2);
+    expect(client.state.current?.revision).toBe(15);
+    expect(client.state.draft).toBeNull();
+  } finally {
+    release(saved);
+    await refresh;
+    client.dispose();
+  }
+});
+
+test("background appearance read still fences an unknown save with a newer revision", async () => {
+  let saved = {
+    version: 1,
+    revision: 14,
+    source: "machine",
+    appearance: { theme: "light", density: "compact" },
+  };
+  let posts = 0;
+  const client = createAppAppearanceClient({
+    read: async () => saved,
+    post: async () => {
+      posts++;
+      throw Error("Lost response");
+    },
+    canWrite: () => true,
+    changed() {},
+  });
+  await client.check();
+  client.edit({ theme: "dark", density: "compact" });
+  await client.save();
+  await client.check({ background: true });
+  expect(client.state.unknownRevision).toBe(14);
+  expect(client.canSave()).toBe(false);
+  saved = {
+    ...saved,
+    revision: 15,
+    appearance: { theme: "dark", density: "compact" },
+  };
+  await client.check({ background: true });
+  expect(client.state.unknownRevision).toBeNull();
+  expect(client.state.draft?.theme).toBe("dark");
+  expect(posts).toBe(1);
+  client.dispose();
+});

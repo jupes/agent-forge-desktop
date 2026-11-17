@@ -57,8 +57,17 @@ export function createAppAppearanceClient(deps: {
     }
     return fresh;
   };
-  const check = async () => {
+  const check = async (options: { background?: boolean } = {}) => {
     if (disposed || state.busy) return;
+    // Passive readback must not disable Save while the user is editing.
+    // Explicit checks and unknown-save recovery still verify the current revision.
+    if (
+      options.background &&
+      state.draft &&
+      state.verified &&
+      state.unknownRevision === null
+    )
+      return;
     state.busy = true;
     publish();
     try {

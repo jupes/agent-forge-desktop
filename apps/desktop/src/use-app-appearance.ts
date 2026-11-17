@@ -47,7 +47,7 @@ export function useAppAppearance(connected: boolean) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const check = () => {
       if (document.visibilityState === "visible" && writable.current)
-        void client.check();
+        void client.check({ background: true });
     };
     const stop = appStream().watch(["operator.action"], () => {
       clearTimeout(timer);
