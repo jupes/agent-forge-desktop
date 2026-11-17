@@ -22,7 +22,7 @@ pub fn install(
         None::<&str>,
     )?;
     let open = MenuItem::with_id(app, "open-window", "Open Agent Forge", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit-app", "Quit Agent Forge…", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit-app", "Quit Agent Forge", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &keep, &quit])?;
     let keep_running = Arc::new(AtomicBool::new(false));
     let quitting = Arc::new(AtomicBool::new(false));
@@ -76,25 +76,11 @@ fn request_quit(app: &tauri::AppHandle, pending: &AtomicBool) {
     if pending.swap(true, Ordering::SeqCst) {
         return;
     }
-    let owner = app.get_webview_window("main");
-    #[cfg(windows)]
-    let owner = owner
-        .and_then(|window| window.hwnd().ok())
-        .map_or(0, |hwnd| hwnd.0 as usize);
-    #[cfg(not(windows))]
-    let owner = {
-        let _ = owner;
-        0
-    };
-    if super::recovery::confirm_quit(owner) {
-        // Existing Exit handler owns shutdown; Cancel never touches the host.
-        app.exit(0);
-    } else {
-        pending.store(false, Ordering::SeqCst);
-    }
+    // Existing Exit handler owns shutdown of the app and its exact owned host.
+    app.exit(0);
 }
 
-///1.0 keeps explicit Close confirmation without creating a tray icon or hiding a living window.
+/// Close exits through the existing shutdown handler without creating a tray icon.
 pub fn install_foreground_close(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let window = app
         .get_webview_window("main")

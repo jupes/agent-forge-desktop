@@ -102,7 +102,7 @@ or raw diagnostic homes into a release packet or issue.
 The distribution must retain the exact repository `LICENSE`, `NOTICE`,
 `.claude/skills/ATTRIBUTION.md` and `docs/fonts/LICENSE-Inter.txt`, with
 `DISTRIBUTION-NOTICES.txt`. [The desktop README](../README.md) owns the build
-commands; [the notices producer](https://github.com/jupes/agent-forge-harness/blob/41d8c3d4c705e1de654edadcedb73fffb45df43b/scripts/distribution/notices.ts)
+commands; [the notices producer](https://github.com/jupes/agent-forge-harness/blob/eaa6fb604829a0c7197d14b1334b0432f765f505/scripts/distribution/notices.ts)
 owns their required contents. Cargo and compiled-sidecar inventories add their
 originals; [pinned Bun originals](runtime-notices.md) prepare runtime review.
 Their explicit coverage holds and actual installer contents remain open.
@@ -173,7 +173,7 @@ See [provider readiness](provider-readiness-contract.md),
 A verified Refused outcome under that specific action's contract means no
 committed action. A generic error or non-success response after dispatch is not
 that proof and can remain Unknown, as can a lost, timed-out or malformed answer.
-Use the [action-outcome contract](https://github.com/jupes/agent-forge-harness/blob/41d8c3d4c705e1de654edadcedb73fffb45df43b/docs/js/action-outcome.ts) and that
+Use the [action-outcome contract](https://github.com/jupes/agent-forge-harness/blob/eaa6fb604829a0c7197d14b1334b0432f765f505/docs/js/action-outcome.ts) and that
 action's owning original/receipt rules. Retain its original identity, inspect the
 matching protected original/receipt and follow that action's recovery control.
 Do not turn a matching current value into proof of an earlier delivery.
@@ -186,8 +186,8 @@ replay pending writes. An unknown restart keeps another restart held until
 the operator checks the Hearth and pending actions. Acknowledging the warning
 does not prove the restart succeeded.
 
-Foreground close uses explicit Quit confirmation; Cancel should keep the app
-and its work available. An owned host failure cleans up and exits passively;
+Foreground close quits directly without a confirmation dialog, using the
+existing owned-host shutdown path. An owned host failure cleans up and exits passively;
 recovery is an explicit relaunch. These are required native behaviors with
 remaining qualification holds. Do not use the historical retry-dialog/tray
 demonstration as proof of the current foreground lifecycle.
@@ -312,7 +312,7 @@ each observed case:
 5. Verify all required Inbox classes, Activity object tabs, palette scope/actions,
    supplied light states, pop-out synchronization/limits and all three cold/warm
    deep-link kinds once those features are included in the qualified candidate.
-6. Cancel close, then confirm Quit; verify exact owned-process cleanup and no
+6. Close the main window once, without a confirmation dialog; verify exact owned-process cleanup and no
    foreign termination. Exercise the reviewed owned-host-failure and relaunch
    case separately. Do not call forced cleanup a successful Quit.
 7. Confirm no1.1 OS notification permission, quiet-hours/master or keep-alive
