@@ -3,4 +3,15 @@ node_modules/
 .tmp/
 .env
 .env.*
+!.env.example
+!.env.*.example
 .DS_Store
+
+# Local state and generated verification/native output
+.beads/
+.agent-forge-session
+agent-forge.toml
+.claude/settings.local.json
+apps/desktop/src-tauri/target/
+test-results*/
+playwright-report/

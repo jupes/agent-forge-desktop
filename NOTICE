@@ -1,5 +1,7 @@
 Required Notice: Copyright (c) 2026 jupes. https://github.com/jupes/agent-forge-harness
 
+Shared-source paths below are relative to the pinned `engine` submodule.
+
 Third-party materials retain their own licenses:
 
 - Skills derived from Matt Pocock's work remain under MIT; see `.claude/skills/ATTRIBUTION.md` and `.agents/skills/tdd/SKILL.md`.

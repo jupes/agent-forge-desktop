@@ -82,7 +82,8 @@ export async function prepare(): Promise<string> {
     if (!stat.isFile() || stat.isSymbolicLink()) throw Error(`Not a regular owned source: ${file}`);
     files.push({ path: file, sha256: createHash("sha256").update(await readFile(source)).digest("hex") });
   }
-  const sourceDigest = createHash("sha256").update(JSON.stringify(files)).update(desktopVersion).update(await readFile(join(root, "overlays/docs-main.tsx"))).update(await readFile(join(root, "build-scripts.json"))).digest("hex");
+  const desktopLock = await readFile(join(root, "bun.lock"));
+  const sourceDigest = createHash("sha256").update(JSON.stringify(files)).update(JSON.stringify(desktopPackage)).update(desktopLock).update(await readFile(join(root, "overlays/docs-main.tsx"))).update(await readFile(join(root, "build-scripts.json"))).digest("hex");
   try {
     const existing = await json(join(workspace, ".forge-desktop-source.json"));
     if (existing.engineCommit === actualEngine && existing.desktopCommit === desktopCommit && existing.sourceDigest === sourceDigest) {
@@ -110,6 +111,11 @@ export async function prepare(): Promise<string> {
   const engineVersion = pkg.version;
   pkg.version = desktopVersion;
   pkg.scripts = { ...(pkg.scripts as Record<string, string>), ...build };
+  for (const kind of ["dependencies", "devDependencies", "peerDependencies"] as const) {
+    pkg[kind] = { ...(pkg[kind] as Record<string, string>), ...(desktopPackage[kind] as Record<string, string>) };
+  }
+  // The desktop owns its tooling lock, including the Tauri CLI.
+  await writeFile(join(workspace, "bun.lock"), desktopLock);
   await writeFile(join(workspace, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
   const source = { schemaVersion: 1, desktopCommit, desktopVersion, engineCommit: actualEngine, engineVersion, sourceDigest, files };
   await writeFile(join(workspace, ".forge-desktop-source.json"), JSON.stringify(source, null, 2) + "\n");

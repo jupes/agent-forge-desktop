@@ -47,4 +47,4 @@ deduplication and stale destruction/generation cleanup. Native IPC, window
 closure and packaged lifecycle require separate evidence; these checks do not
 substitute for the operator's Windows acceptance.
 
-[Earlier browser-only compact capture](https://github.com/jupes/agent-forge-harness/blob/26ad253ddab8b93fab66207ed4b309e9d57f368f/apps/desktop/docs/screenshots/session-window-owned.png) is historical evidence, not a current native pass.
+The earlier browser-only compact capture was retired because it included a local filesystem path. That historical checkpoint does not establish a current native pass.

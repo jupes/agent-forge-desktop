@@ -102,7 +102,7 @@ or raw diagnostic homes into a release packet or issue.
 The distribution must retain the exact repository `LICENSE`, `NOTICE`,
 `.claude/skills/ATTRIBUTION.md` and `docs/fonts/LICENSE-Inter.txt`, with
 `DISTRIBUTION-NOTICES.txt`. [The desktop README](../README.md) owns the build
-commands; [the notices producer](../../../scripts/distribution/notices.ts)
+commands; [the notices producer](https://github.com/jupes/agent-forge-harness/blob/41d8c3d4c705e1de654edadcedb73fffb45df43b/scripts/distribution/notices.ts)
 owns their required contents. Cargo and compiled-sidecar inventories add their
 originals; [pinned Bun originals](runtime-notices.md) prepare runtime review.
 Their explicit coverage holds and actual installer contents remain open.
@@ -173,7 +173,7 @@ See [provider readiness](provider-readiness-contract.md),
 A verified Refused outcome under that specific action's contract means no
 committed action. A generic error or non-success response after dispatch is not
 that proof and can remain Unknown, as can a lost, timed-out or malformed answer.
-Use the [action-outcome contract](../../../docs/js/action-outcome.ts) and that
+Use the [action-outcome contract](https://github.com/jupes/agent-forge-harness/blob/41d8c3d4c705e1de654edadcedb73fffb45df43b/docs/js/action-outcome.ts) and that
 action's owning original/receipt rules. Retain its original identity, inspect the
 matching protected original/receipt and follow that action's recovery control.
 Do not turn a matching current value into proof of an earlier delivery.
