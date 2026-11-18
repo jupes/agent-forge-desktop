@@ -255,10 +255,7 @@ mod tests {
         let from_cwd = select_root(&[], &path, || panic!("unexpected picker"), || false)
             .unwrap()
             .unwrap();
-        let args = [
-            OsString::from("--root"),
-            verbatim.clone().into_os_string(),
-        ];
+        let args = [OsString::from("--root"), verbatim.clone().into_os_string()];
         let explicit = select_root(&args, &fixture.0, || panic!("unexpected picker"), || false)
             .unwrap()
             .unwrap();
@@ -349,7 +346,10 @@ mod tests {
                 true
             },
         );
-        assert_eq!(result.unwrap(), Some(dunce::canonicalize(checkout).unwrap()));
+        assert_eq!(
+            result.unwrap(),
+            Some(dunce::canonicalize(checkout).unwrap())
+        );
         assert_eq!(warnings, 1);
         assert_eq!(
             select_root(&[], &fixture.0, || Ok(Some(fixture.0.clone())), || false),
