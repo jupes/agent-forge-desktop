@@ -155,5 +155,14 @@ Test-Case 'intent and effect journals cannot overwrite earlier evidence' {
   }
 }
 
+Test-Case 'manual workflow prepares and creates exactly once with preserved intent in between' {
+  $workflow=Get-Content -LiteralPath (Join-Path $PSScriptRoot '../.github/workflows/release-draft.yml') -Raw
+  $prepare=[regex]::Matches($workflow,'(?m)^\s+run: .+ -Mode Prepare\b')
+  $draft=[regex]::Matches($workflow,'(?m)^\s+run: .+ -Mode Draft\b')
+  Assert-True ($prepare.Count -eq 1 -and $draft.Count -eq 1)
+  $intent=$workflow.IndexOf('INTENT.json')
+  Assert-True ($prepare[0].Index -lt $intent -and $intent -lt $draft[0].Index)
+}
+
 if ($script:Failed -gt 0) { throw "$script:Failed failed; $script:Passed passed." }
 Write-Output "$script:Passed passed; 0 failed."
