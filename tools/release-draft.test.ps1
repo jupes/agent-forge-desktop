@@ -58,6 +58,19 @@ Test-Case 'archive indexing hashes actual bytes and retains only bounded manifes
     Assert-True ($index.json['CANDIDATE.json'] -ceq '{}')
   }
 }
+Test-Case 'archive indexing derives the NSIS executable identity from actual portable bytes' {
+  With-Archive @(@{name='agent-forge-desktop.exe';content="MZ fixture`0__TAURI_BUNDLE_TYPE_VAR_UNK`0end"}) { param($path)
+    $index=Get-ForgeZipIndex $path
+    Assert-True ($index.nsisMainBinarySha256 -ceq 'a59bd4cef8bf0ebb7f60c38fb18b25ad07f41859c960a90cdcc73666d6b6af7c')
+  }
+}
+Test-Case 'portable executables with missing, duplicate or already patched markers refuse' {
+  foreach($content in @('no marker','__TAURI_BUNDLE_TYPE_VAR_UNK__TAURI_BUNDLE_TYPE_VAR_UNK','__TAURI_BUNDLE_TYPE_VAR_UNK__TAURI_BUNDLE_TYPE_VAR_NSS')) {
+    With-Archive @(@{name='agent-forge-desktop.exe';content=$content}) { param($path)
+      Assert-Throws {Get-ForgeZipIndex $path}
+    }
+  }
+}
 Test-Case 'unsafe, absolute, backslash and Windows-reserved archive paths refuse' {
   foreach($name in @('../escape','/absolute','C:/drive','dir\escape','nul.txt','bad./file','a//b','a:stream')) {
     With-Archive @(@{name=$name;content='inert'}) { param($path) Assert-Throws { Get-ForgeZipIndex $path } }
@@ -87,10 +100,10 @@ function New-PairFixture {
   $phash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($pjson))).ToLowerInvariant()
   $files.Add('CANDIDATE.json',@{path='CANDIDATE.json';bytes=[Text.Encoding]::UTF8.GetByteCount($pjson);sha256=$phash})
   $setup="Agent-Forge-Harness-$version-windows-x64-setup.exe"
-  $i=@{schemaVersion=1;kind='unsigned-nsis-engineering-candidate';productVersion=$version;sourceCommit=$sha;sourceTree=('c'*40);engineCommit=('d'*40);desktopSourceDigest=('e'*64);runId='123';runAttempt='1';installerBuilt=$true;installerExecuted=$false;nativeAppLaunched=$false;signed=$false;manualAcceptance='pending';releaseDisposition='hold';installer=@{path=$setup;bytes=1;sha256=$hash};templateSha256=('f'*64);mainBinarySha256=$hash;sidecars=@(@{path='desktop-host.exe';sha256=$hash},@{path='hearth.exe';sha256=$hash});compilerInputs=@(@{path='compiler-inputs/inert.nsh';bytes=1;sha256=$hash});renderedScriptSha256=$hash;overlaySha256=$hash;portableSnapshotSha256=$phash;resourceFiles=@($p.files | Where-Object {$_.path -notin @('agent-forge-desktop.exe','desktop-host.exe','hearth.exe','MANUAL-TESTING.md') -and -not $_.path.StartsWith('dashboard/')});holds=@('unsigned','manual pending','redistribution pending')}
+  $i=@{schemaVersion=2;kind='unsigned-nsis-engineering-candidate';productVersion=$version;sourceCommit=$sha;sourceTree=('c'*40);engineCommit=('d'*40);desktopSourceDigest=('e'*64);runId='123';runAttempt='1';installerBuilt=$true;installerExecuted=$false;nativeAppLaunched=$false;signed=$false;manualAcceptance='pending';releaseDisposition='hold';installer=@{path=$setup;bytes=1;sha256=$hash};templateSha256=('f'*64);mainBinarySha256=('c'*64);portableMainBinarySha256=$hash;mainBinaryVerification='extracted-nsis-payload-v1';sidecars=@(@{path='desktop-host.exe';sha256=$hash},@{path='hearth.exe';sha256=$hash});compilerInputs=@(@{path='compiler-inputs/inert.nsh';bytes=1;sha256=$hash});renderedScriptSha256=$hash;overlaySha256=$hash;portableSnapshotSha256=$phash;resourceFiles=@($p.files | Where-Object {$_.path -notin @('agent-forge-desktop.exe','desktop-host.exe','hearth.exe','MANUAL-TESTING.md') -and -not $_.path.StartsWith('dashboard/')});holds=@('unsigned','manual pending','redistribution pending')}
   $ifiles=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
   foreach($path in @($setup,'installer.nsi','INSTALLER-SOURCE.json','INSTALLER-TESTING.md','bundle-config.json','compiler-inputs/inert.nsh','INSTALLER-CANDIDATE.json')){$ifiles.Add($path,@{path=$path;bytes=1;sha256=$hash})}
-  return @{portable=@{files=$files;json=@{'CANDIDATE.json'=$pjson}};installer=@{files=$ifiles;json=@{'INSTALLER-CANDIDATE.json'=($i|ConvertTo-Json -Depth 12 -Compress)}};p=$p;i=$i;expected=@{sha=$sha;tree=('c'*40);engine=('d'*40);sourceDigest=('e'*64);version=$version;runId='123';templateSha256=('f'*64);installerSourceSha256=$hash;installerTestingSha256=$hash;manualSha256=$hash}}
+  return @{portable=@{files=$files;json=@{'CANDIDATE.json'=$pjson};nsisMainBinarySha256=('c'*64)};installer=@{files=$ifiles;json=@{'INSTALLER-CANDIDATE.json'=($i|ConvertTo-Json -Depth 12 -Compress)}};p=$p;i=$i;expected=@{sha=$sha;tree=('c'*40);engine=('d'*40);sourceDigest=('e'*64);version=$version;runId='123';templateSha256=('f'*64);installerSourceSha256=$hash;installerTestingSha256=$hash;manualSha256=$hash}}
 }
 function Update-InstallerFixture($Fixture) {$Fixture.installer.json['INSTALLER-CANDIDATE.json']=$Fixture.i|ConvertTo-Json -Depth 12 -Compress}
 Test-Case 'portable and installer manifests agree with accepted source and all payload files' {
@@ -110,12 +123,16 @@ Test-Case 'cleared holds, claimed signing or manual acceptance and launched bina
   }
 }
 Test-Case 'installer bytes, compiler inputs, main binary, sidecars and resource correspondence refuse mismatches' {
-  foreach($kind in @('installer','compiler','main','sidecar','resource','snapshot','extra-portable','extra-installer','missing-notice')) {
+  foreach($kind in @('installer','compiler','main','portable-main','proof-kind','legacy-schema','derived-main','sidecar','resource','snapshot','extra-portable','extra-installer','missing-notice')) {
     $f=New-PairFixture
     switch($kind){
       installer {$f.i.installer.sha256='9'*64}
       compiler {$f.i.compilerInputs[0].bytes=2}
       main {$f.i.mainBinarySha256='9'*64}
+      portable-main {$f.i.portableMainBinarySha256='9'*64}
+      proof-kind {$f.i.mainBinaryVerification='unverified'}
+      legacy-schema {$f.i.schemaVersion=1}
+      derived-main {$f.portable.nsisMainBinarySha256='9'*64}
       sidecar {$f.i.sidecars[0].sha256='9'*64}
       resource {$f.i.resourceFiles[0].sha256='9'*64}
       snapshot {$f.i.portableSnapshotSha256='9'*64}
