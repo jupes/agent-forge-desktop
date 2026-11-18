@@ -73,6 +73,10 @@ jobs:
       - name: Assemble pinned engine and desktop sources
         working-directory: .
         run: bun tools/workspace.ts
+      - name: Validate unpublished release metadata and inert archives
+        working-directory: .
+        shell: pwsh
+        run: ./tools/release-draft.test.ps1
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test ./scripts ./apps/desktop/src --timeout 15000

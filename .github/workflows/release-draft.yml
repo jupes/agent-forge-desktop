@@ -1,0 +1,67 @@
+name: Prepare unpublished Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      quality_run_id:
+        description: Successful attempt-1 normal Quality run for the current main commit
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: unpublished-windows-release
+  cancel-in-progress: false
+jobs:
+  draft:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Validate metadata and inert archive contracts
+        shell: pwsh
+        run: ./tools/release-draft.test.ps1
+      - name: Assemble accepted source identity without building binaries
+        shell: pwsh
+        run: bun run prepare
+      - name: Verify two engineering archives and prepare release intent
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALITY_RUN_ID: ${{ inputs.quality_run_id }}
+        run: ./tools/release-draft.ps1 -Mode Prepare -RunId $env:QUALITY_RUN_ID -OutputDirectory "$env:RUNNER_TEMP/agent-forge-release-draft"
+      - name: Preserve verified intent before any release write
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpublished-release-intent-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/agent-forge-release-draft/INTENT.json
+            ${{ runner.temp }}/agent-forge-release-draft/RELEASE-REVIEW.json
+            ${{ runner.temp }}/agent-forge-release-draft/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+      - name: Create one unpublished draft and verify all five assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALITY_RUN_ID: ${{ inputs.quality_run_id }}
+        run: ./tools/release-draft.ps1 -Mode Draft -RunId $env:QUALITY_RUN_ID -OutputDirectory "$env:RUNNER_TEMP/agent-forge-release-draft"
+      - name: Preserve release effects including uncertain outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpublished-release-effects-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/agent-forge-release-draft/*.json
+            ${{ runner.temp }}/agent-forge-release-draft/SHA256SUMS
+          if-no-files-found: warn
+          retention-days: 30
