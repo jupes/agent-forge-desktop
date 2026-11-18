@@ -1183,6 +1183,11 @@ export function ProjectCreateFlow({
       )}
       {state.error && <p role="status">{state.error}</p>}
       {state.notice && <p role="status">{state.notice}</p>}
+      {state.phase === "unavailable" && (
+        <Button disabled={state.busy} onClick={() => void owner.recover()}>
+          Refresh trusted choices
+        </Button>
+      )}
       {active.map((entry) => (
         <article
           class="af-project-create-reserved"

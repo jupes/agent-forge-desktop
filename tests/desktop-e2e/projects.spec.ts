@@ -124,6 +124,63 @@ test.beforeEach(() => {
   );
 });
 
+test("project choices recover in place after a complete source read fails without sending a write", async ({
+  page,
+}) => {
+  let unavailable = true;
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST")
+      writes.push(new URL(request.url()).pathname);
+  });
+  await page.route(
+    "**/__agent-forge/projects/create-options",
+    async (route) => {
+      if (!unavailable) {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          data: null,
+          error: "Fixture complete project choices are unavailable.",
+        }),
+      });
+    },
+  );
+  await openSettled(page, "/index.html#/desktop/projects");
+  const creation = page.getByRole("region", { name: "Project creation" });
+  const start = creation.getByRole("button", {
+    name: "New project",
+    exact: true,
+  });
+  await expect(start).toBeDisabled();
+  await expect(creation).toContainText(
+    "Project setup could not load completely.",
+  );
+  await expect(creation).not.toContainText(
+    "Saved project creation could not be verified",
+  );
+  const refresh = creation.getByRole("button", {
+    name: "Refresh trusted choices",
+    exact: true,
+  });
+  await expect(refresh).toBeEnabled();
+  unavailable = false;
+  await refresh.click();
+  await expect(start).toBeEnabled();
+  await expect(refresh).not.toBeVisible();
+  await start.click();
+  const dialog = page.getByRole("dialog", { name: "Create a project" });
+  await expect(dialog).toBeVisible();
+  await dialog.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  expect(writes).toEqual([]);
+});
+
 test("@native-project-repair unavailable checkouts are explained without blocking verified project choices", async ({
   page,
 }) => {

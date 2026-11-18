@@ -396,7 +396,7 @@ export function createProjectCreateOwner(deps: {
       emit();
     } catch {
       unavailable(
-        "Saved project creation could not be verified. Existing originals remain held; no further action was taken.",
+        "Project setup could not load completely. Use Refresh trusted choices to try again. Any saved requests remain held; this refresh did not send a create.",
         current,
       );
     }

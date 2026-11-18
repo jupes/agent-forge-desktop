@@ -1,6 +1,6 @@
 [package]
 name = "agent-forge-desktop"
-version = "1.0.0-rc.1"
+version = "1.0.0-rc.2"
 edition = "2021"
 build = "build.rs"
 
@@ -8,6 +8,7 @@ build = "build.rs"
 tauri-build = { version = "=2.7.3", features = [] }
 
 [dependencies]
+dunce = "=1.0.5"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = { version = "=1.0.149", features = ["raw_value"] }
 toml = "=1.1.8+spec-1.1.0"
