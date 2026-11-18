@@ -1,0 +1,15 @@
+# Windows release distribution
+
+GitHub Releases in agent-forge-desktop is the destination for downloadable app versions. Actions artifacts are temporary engineering outputs. There is no published stable 1.0 installer yet.
+
+The manual **Prepare unpublished Windows release** workflow stages one unsigned 1.0 release candidate as an unpublished prerelease. It never publishes a release or promotes latest. Run it only after its source is accepted on main and all seven jobs of that exact main commit’s normal Quality push run pass on attempt 1. Supply that run’s numeric ID; PR runs, dispatch runs, retries, skipped gates and a main commit that moved are refused.
+
+The runner downloads exactly the portable and installer-review artifacts from that run. It verifies GitHub archive digests, bounded ZIP contents, every portable file hash, source/tree/engine/version/digest identity, installer and compiler-input hashes, sidecars and notice-resource correspondence. No downloaded binary is executed. The five release assets are the portable ZIP, installer-review ZIP, setup EXE, RELEASE-REVIEW.json and SHA256SUMS.
+
+Before any release write, the workflow saves INTENT.json, review metadata and checksums as an Actions artifact. Creation and upload attempts are journaled before each request. Existing tags or releases are refused, assets are never overwritten, and unknown request outcomes stop the workflow. Inspect the intent, effect evidence and GitHub state before any separately authorized recovery; blindly rerunning a failed workflow can create conflicting effects. Successful staging requires the server to confirm all five asset sizes and SHA256 digests and the release to remain an unpublished draft.
+
+The archives retain their original manifests, notices and testing instructions. Archive limits are one GiB compressed each, two GiB uncompressed across both archives and 12,000 total entries. Unsafe Windows paths, links, case collisions and extra or missing payload records are refused. A draft is a preparation artifact and does not establish signing, channel provisioning, complete runtime redistribution/source-relink coverage, installer runtime, startup/retirement, upgrade/uninstall, or human/manual acceptance. Those requirements remain open until their own evidence is complete.
+
+For manual testing, use the exact reviewed candidate and its included testing guides after installation is authorized. Preserve projects, trackers, provider profiles and chat history. Record observed results against the exact source, manifest and installer SHA256. Publish a stable release only after the outstanding release requirements have been accepted.
+
+Repository maintainers can run the pure local validator with `pwsh -NoLogo -NoProfile -NonInteractive -File tools/release-draft.test.ps1`. It uses tiny inert ZIPs and metadata fixtures, does not read a token, and does not use the network or launch a product binary. Release transfer modes refuse to run outside the authenticated main-branch GitHub workflow.

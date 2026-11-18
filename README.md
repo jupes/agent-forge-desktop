@@ -25,7 +25,7 @@ Desktop quality CI runs the complete assembled unit and browser suites, includin
 
 ## Versions and downloads
 
-App versions and downloadable installers belong to [this repository’s Releases](https://github.com/jupes/agent-forge-desktop/releases). CI artifacts remain temporary engineering candidates. There is no published stable 1.0 installer yet. Signing/channel provisioning, installer qualification and the remaining manual acceptance requirements stay open.
+App versions and downloadable installers belong to [this repository’s Releases](https://github.com/jupes/agent-forge-desktop/releases). CI artifacts remain temporary engineering candidates. See [Windows release distribution](docs/release-distribution.md) for the workflow that prepares a verified, unpublished engineering draft with checksums and source evidence. There is no published stable 1.0 installer yet. Signing/channel provisioning, installer qualification and the remaining manual acceptance requirements stay open.
 
 The current app still opens a valid harness checkout. This source split does not change workspace selection, existing projects, Beads membership, provider configuration or user data. Supporting ordinary repositories without a harness checkout is a separate product change.
 
