@@ -10,6 +10,12 @@ legal files and inventories to the existing dashboard resources. `installer.nsi`
 is the actual rendered compiler input. The ordinary portable candidate remains
 available separately.
 
+Installer manifest schema 2 records `mainBinarySha256` for the executable
+extracted from the installer and `portableMainBinarySha256` for the portable
+input. Pinned Tauri 2.12.3 changes its bundle marker for NSIS and then restores
+the input file. The build verifies that this is the only byte difference;
+release preparation independently derives the NSIS hash from the portable ZIP.
+
 Signing, publisher key/channel, runtime source/relink obligations, current NSIS
 payload obligations and human acceptance remain open. The included inventories
 retain their explicit coverage holds. Compilation alone does not establish

@@ -25,6 +25,18 @@ function Assert-ForgeArchivePath([string]$Name) {
   }
 }
 
+function Get-ForgeNsisMainBinaryHash([byte[]]$Bytes) {
+  if($Bytes.Length -eq 0 -or $Bytes.Length -gt 67108864){throw 'Portable executable bound exceeded.'}
+  $marker='__TAURI_BUNDLE_TYPE_VAR_UNK'
+  $text=[Text.Encoding]::ASCII.GetString($Bytes)
+  $offset=$text.IndexOf($marker,[StringComparison]::Ordinal)
+  if($offset -lt 0 -or $text.IndexOf($marker,$offset+1,[StringComparison]::Ordinal) -ge 0 -or $text.Contains('__TAURI_BUNDLE_TYPE_VAR_NSS')){throw 'Unverified portable executable bundle marker.'}
+  [byte[]]$patched=$Bytes.Clone()
+  $replacement=[Text.Encoding]::ASCII.GetBytes('__TAURI_BUNDLE_TYPE_VAR_NSS')
+  [Array]::Copy($replacement,0,$patched,$offset,$replacement.Length)
+  return [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($patched)).ToLowerInvariant()
+}
+
 function Get-ForgeZipIndex {
   param([string]$Path, [ValidateRange(1,2147483648)][long]$RemainingBytes=2147483648, [ValidateRange(1,12000)][int]$RemainingEntries=12000)
   if ((Get-Item -LiteralPath $Path).Length -gt 1073741824) { throw 'Archive exceeds one GiB.' }
@@ -34,7 +46,7 @@ function Get-ForgeZipIndex {
     $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $directories=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $files=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
-    $json=@{}; [long]$total=0; $buffer=[byte[]]::new(65536)
+    $json=@{}; $nsisMainBinarySha256=$null; [long]$total=0; $buffer=[byte[]]::new(65536)
     foreach ($entry in $zip.Entries) {
       $name=$entry.FullName; $directory=$name.EndsWith('/'); if($directory){$name=$name.Substring(0,$name.Length-1)}
       Assert-ForgeArchivePath $name
@@ -52,9 +64,11 @@ function Get-ForgeZipIndex {
       if($directories.Contains($name)){throw 'File-directory archive collision.'}
       if($entry.Length -lt 0 -or $entry.Length -gt $RemainingBytes-$total){throw 'Uncompressed archive bound exceeded.'}
       $capture=$name -cin @('CANDIDATE.json','INSTALLER-CANDIDATE.json')
+      $captureBinary=$name -ceq 'agent-forge-desktop.exe'
       if($capture -and $entry.Length -gt 4194304){throw 'Candidate manifest bound exceeded.'}
+      if($captureBinary -and $entry.Length -gt 67108864){throw 'Portable executable bound exceeded.'}
       $stream=$entry.Open(); $hash=[Security.Cryptography.IncrementalHash]::CreateHash([Security.Cryptography.HashAlgorithmName]::SHA256)
-      $memory=if($capture){[IO.MemoryStream]::new()}else{$null}; [long]$actual=0
+      $memory=if($capture -or $captureBinary){[IO.MemoryStream]::new()}else{$null}; [long]$actual=0
       try {
         while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){
           $actual+=$read; $total+=$read
@@ -64,9 +78,10 @@ function Get-ForgeZipIndex {
         if($actual -ne $entry.Length){throw 'Truncated archive entry.'}
         $files.Add($name,@{path=$name;bytes=$actual;sha256=[Convert]::ToHexString($hash.GetHashAndReset()).ToLowerInvariant()})
         if($capture){$json[$name]=[Text.UTF8Encoding]::new($false,$true).GetString($memory.ToArray())}
+        if($captureBinary){$nsisMainBinarySha256=Get-ForgeNsisMainBinaryHash $memory.ToArray()}
       } finally { $stream.Dispose(); $hash.Dispose(); if($memory){$memory.Dispose()} }
     }
-    return @{files=$files;json=$json;bytes=$total;entries=$zip.Entries.Count}
+    return @{files=$files;json=$json;bytes=$total;entries=$zip.Entries.Count;nsisMainBinarySha256=$nsisMainBinarySha256}
   } finally { $zip.Dispose() }
 }
 
@@ -83,8 +98,9 @@ function Assert-ForgeCandidatePair($Portable, $Installer, $Expected) {
     $i=$Installer.json['INSTALLER-CANDIDATE.json'] | ConvertFrom-Json -AsHashtable -ErrorAction Stop
   } catch { throw 'Missing or malformed candidate manifest.' }
   if($p.kind -cne 'portable-engineering-candidate' -or $i.kind -cne 'unsigned-nsis-engineering-candidate' -or $Expected.version -cnotmatch '^1[.]0[.]0-rc[.][1-9][0-9]*$'){throw 'Only a 1.0 release candidate can be staged.'}
+  if($p.schemaVersion -ne 1 -or $i.schemaVersion -ne 2){throw 'Candidate manifest schema mismatch.'}
   foreach($manifest in @($p,$i)) {
-    if($manifest.schemaVersion -ne 1 -or $manifest.sourceCommit -cne $Expected.sha -or $manifest.sourceTree -cne $Expected.tree -or $manifest.engineCommit -cne $Expected.engine -or $manifest.productVersion -cne $Expected.version -or $manifest.desktopSourceDigest -cne $Expected.sourceDigest -or [string]$manifest.runId -cne [string]$Expected.runId -or [string]$manifest.runAttempt -cne '1' -or $manifest.nativeAppLaunched -isnot [bool] -or $manifest.nativeAppLaunched -ne $false -or $manifest.manualAcceptance -cne 'pending'){throw 'Candidate source identity or acceptance mismatch.'}
+    if($manifest.sourceCommit -cne $Expected.sha -or $manifest.sourceTree -cne $Expected.tree -or $manifest.engineCommit -cne $Expected.engine -or $manifest.productVersion -cne $Expected.version -or $manifest.desktopSourceDigest -cne $Expected.sourceDigest -or [string]$manifest.runId -cne [string]$Expected.runId -or [string]$manifest.runAttempt -cne '1' -or $manifest.nativeAppLaunched -isnot [bool] -or $manifest.nativeAppLaunched -ne $false -or $manifest.manualAcceptance -cne 'pending'){throw 'Candidate source identity or acceptance mismatch.'}
   }
   if($p.platform -cne 'windows-x64' -or $p.installerBuilt -isnot [bool] -or $p.installerBuilt -ne $false -or $i.installerBuilt -ne $true -or $i.installerBuilt -isnot [bool] -or $i.releaseDisposition -cne 'hold' -or @($i.holds).Count -ne 3 -or @($i.holds | Where-Object {$_ -isnot [string] -or -not $_.Trim()}).Count -ne 0){throw 'Candidate release holds changed.'}
   foreach($field in @('signed','installerExecuted')){if($i[$field] -isnot [bool] -or $i[$field] -ne $false){throw 'Unsigned, unexecuted installer required.'}}
@@ -97,7 +113,8 @@ function Assert-ForgeCandidatePair($Portable, $Installer, $Expected) {
   $required=@('LICENSE','NOTICE','THIRD-PARTY-NOTICES.txt','DISTRIBUTION-NOTICES.txt','DISTRIBUTION-INVENTORY.json','RUNTIME-DEPENDENCY-INVENTORY.json','COMPILED-DEPENDENCY-INVENTORY.json','.claude/skills/ATTRIBUTION.md','docs/fonts/LICENSE-Inter.txt','agent-forge-desktop.exe','desktop-host.exe','hearth.exe','dashboard/index.html','MANUAL-TESTING.md')
   foreach($path in $required){if(-not $seen.Contains($path)){throw 'Missing required portable payload or notice.'}}
   if(@($rows | Where-Object {$_.path.StartsWith('legal/')}).Count -eq 0){throw 'Missing original legal texts.'}
-  if($Portable.files['MANUAL-TESTING.md'].sha256 -cne $Expected.manualSha256 -or $i.templateSha256 -cne $Expected.templateSha256 -or $i.portableSnapshotSha256 -cne $Portable.files['CANDIDATE.json'].sha256 -or $i.mainBinarySha256 -cne $Portable.files['agent-forge-desktop.exe'].sha256){throw 'Installer source or portable snapshot mismatch.'}
+  if($Portable.files['MANUAL-TESTING.md'].sha256 -cne $Expected.manualSha256 -or $i.templateSha256 -cne $Expected.templateSha256 -or $i.portableSnapshotSha256 -cne $Portable.files['CANDIDATE.json'].sha256 -or $i.portableMainBinarySha256 -cne $Portable.files['agent-forge-desktop.exe'].sha256){throw 'Installer source or portable snapshot mismatch.'}
+  if($i.mainBinaryVerification -cne 'extracted-nsis-payload-v1' -or $Portable.nsisMainBinarySha256 -cnotmatch '^[a-f0-9]{64}$' -or $i.mainBinarySha256 -cne $Portable.nsisMainBinarySha256){throw 'Installer NSIS executable identity mismatch.'}
   $sidecars=@($i.sidecars)
   if($sidecars.Count -ne 2){throw 'Sidecar set mismatch.'}
   foreach($path in @('desktop-host.exe','hearth.exe')){

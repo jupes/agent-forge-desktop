@@ -11,11 +11,41 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import {
   assertHostedInstallerBuild,
+  installerMainBinaryIdentity,
   planInstallerResources,
   verifyResourceSnapshot,
 } from "./installer-candidate";
 
 const roots: string[] = [];
+
+test("installer identity records the packaged NSIS bytes separately from the portable executable", () => {
+  const portable = Buffer.from("MZ fixture\0__TAURI_BUNDLE_TYPE_VAR_UNK\0end");
+  const packaged = Buffer.from("MZ fixture\0__TAURI_BUNDLE_TYPE_VAR_NSS\0end");
+  const original = Buffer.from(portable);
+  expect(installerMainBinaryIdentity(portable, packaged)).toEqual({
+    mainBinarySha256: createHash("sha256").update(packaged).digest("hex"),
+    portableMainBinarySha256: createHash("sha256")
+      .update(portable)
+      .digest("hex"),
+  });
+  expect(portable).toEqual(original);
+});
+
+test("installer identity refuses missing or ambiguous markers and other payload changes", () => {
+  const portable = Buffer.from("MZ fixture\0__TAURI_BUNDLE_TYPE_VAR_UNK\0end");
+  for (const packaged of [
+    portable,
+    Buffer.from("MZ fixture\0__TAURI_BUNDLE_TYPE_VAR_NSS\0bad"),
+    Buffer.from("short"),
+  ])
+    expect(() => installerMainBinaryIdentity(portable, packaged)).toThrow();
+  for (const original of [
+    Buffer.from("no marker"),
+    Buffer.from("__TAURI_BUNDLE_TYPE_VAR_UNK__TAURI_BUNDLE_TYPE_VAR_UNK"),
+    Buffer.from("__TAURI_BUNDLE_TYPE_VAR_UNK__TAURI_BUNDLE_TYPE_VAR_NSS"),
+  ])
+    expect(() => installerMainBinaryIdentity(original, original)).toThrow();
+});
 afterEach(() => {
   for (const root of roots.splice(0)) {
     if (

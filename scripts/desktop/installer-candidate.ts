@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -37,6 +38,39 @@ const excluded = new Set([
 ]);
 const digest = (file: string) =>
   createHash("sha256").update(readFileSync(file)).digest("hex");
+
+export function installerMainBinaryIdentity(
+  portable: Uint8Array,
+  packaged: Uint8Array,
+): { mainBinarySha256: string; portableMainBinarySha256: string } {
+  if (
+    portable.length === 0 ||
+    portable.length > 64 * 1024 * 1024 ||
+    packaged.length !== portable.length
+  )
+    throw Error("Invalid installer executable size");
+  const original = Buffer.from(portable);
+  const marker = Buffer.from("__TAURI_BUNDLE_TYPE_VAR_UNK");
+  const offset = original.indexOf(marker);
+  if (
+    offset < 0 ||
+    original.indexOf(marker, offset + 1) !== -1 ||
+    original.includes(Buffer.from("__TAURI_BUNDLE_TYPE_VAR_NSS"))
+  )
+    throw Error("Unverified portable executable bundle marker");
+  // Pinned Tauri 2.12.3 patches this marker for NSIS, then restores its input.
+  const expected = Buffer.from(original);
+  Buffer.from("__TAURI_BUNDLE_TYPE_VAR_NSS").copy(expected, offset);
+  if (!expected.equals(packaged))
+    throw Error("NSIS payload differs beyond the verified bundle marker");
+  return {
+    mainBinarySha256: createHash("sha256").update(packaged).digest("hex"),
+    portableMainBinarySha256: createHash("sha256")
+      .update(original)
+      .digest("hex"),
+  };
+}
+
 function safe(path: string): boolean {
   return (
     path.length > 0 &&
@@ -276,6 +310,43 @@ async function main(): Promise<void> {
   )
     throw Error("Invalid installer output");
   const rendered = join(target, "release/nsis/x64/installer.nsi");
+  const portableMainPath = join(target, "release/agent-forge-desktop.exe");
+  const mainStat = lstatSync(portableMainPath);
+  if (
+    !mainStat.isFile() ||
+    mainStat.isSymbolicLink() ||
+    mainStat.size < 1 ||
+    mainStat.size > 64 * 1024 * 1024
+  )
+    throw Error("Invalid portable executable input");
+  const portableMain = readFileSync(portableMainPath);
+  // Read the actual payload without executing it. Refuse extraction or byte drift.
+  const packagedMain = execFileSync(
+    "7z",
+    [
+      "e",
+      "-so",
+      "-bd",
+      "-bso0",
+      "-bse1",
+      "-bsp0",
+      installer,
+      "agent-forge-desktop.exe",
+    ],
+    { timeout: 15_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+  );
+  const mainIdentity = installerMainBinaryIdentity(portableMain, packagedMain);
+  verifyResourceSnapshot(
+    [
+      {
+        path: "agent-forge-desktop.exe",
+        source: relative(backend, portableMainPath).replaceAll("\\", "/"),
+        bytes: portableMain.length,
+        sha256: mainIdentity.portableMainBinarySha256,
+      },
+    ],
+    candidate.files,
+  );
   const outputName = `Agent-Forge-Harness-${version}-windows-x64-setup.exe`;
   copyFileSync(installer, join(out, outputName));
   copyFileSync(rendered, join(out, "installer.nsi"));
@@ -306,7 +377,7 @@ async function main(): Promise<void> {
     };
   });
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     kind: "unsigned-nsis-engineering-candidate",
     productVersion: version,
     sourceCommit: head,
@@ -327,7 +398,8 @@ async function main(): Promise<void> {
       sha256: digest(installer),
     },
     templateSha256: digest(join(backend, "installer/installer.nsi")),
-    mainBinarySha256: digest(join(target, "release/agent-forge-desktop.exe")),
+    ...mainIdentity,
+    mainBinaryVerification: "extracted-nsis-payload-v1",
     sidecars: ["desktop-host", "hearth"].map((name) => ({
       path: name + ".exe",
       sha256: digest(
