@@ -5,7 +5,7 @@ use std::{
 };
 
 fn validate(root: &Path) -> Result<PathBuf, &'static str> {
-    let root = fs::canonicalize(root).map_err(|_| "invalid checkout root")?;
+    let root = dunce::canonicalize(root).map_err(|_| "invalid checkout root")?;
     if !root.is_dir()
         || !root.join("scripts/hearth/server.ts").is_file()
         || !root.join(".git").exists()
@@ -226,7 +226,7 @@ mod tests {
                 || panic!("unexpected warning")
             )
             .unwrap(),
-            Some(fs::canonicalize(path).unwrap())
+            Some(dunce::canonicalize(path).unwrap())
         );
     }
 
@@ -241,9 +241,34 @@ mod tests {
             let args = [OsString::from("--root"), root];
             assert_eq!(
                 select_root(&args, &fixture.0, || panic!("unexpected picker"), || false).unwrap(),
-                Some(fs::canonicalize(&path).unwrap())
+                Some(dunce::canonicalize(&path).unwrap())
             );
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn checkout_handoffs_use_one_compatible_windows_path() {
+        let fixture = Fixture::new();
+        let path = fixture.checkout(false);
+        let verbatim = fs::canonicalize(&path).unwrap();
+        let from_cwd = select_root(&[], &path, || panic!("unexpected picker"), || false)
+            .unwrap()
+            .unwrap();
+        let args = [
+            OsString::from("--root"),
+            verbatim.clone().into_os_string(),
+        ];
+        let explicit = select_root(&args, &fixture.0, || panic!("unexpected picker"), || false)
+            .unwrap()
+            .unwrap();
+        let picked = select_root(&[], &fixture.0, || Ok(Some(verbatim.clone())), || false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(from_cwd, explicit);
+        assert_eq!(from_cwd, picked);
+        assert!(!from_cwd.to_string_lossy().starts_with(r"\\?\"));
+        assert_eq!(fs::canonicalize(from_cwd).unwrap(), verbatim);
     }
 
     #[test]
@@ -324,7 +349,7 @@ mod tests {
                 true
             },
         );
-        assert_eq!(result.unwrap(), Some(fs::canonicalize(checkout).unwrap()));
+        assert_eq!(result.unwrap(), Some(dunce::canonicalize(checkout).unwrap()));
         assert_eq!(warnings, 1);
         assert_eq!(
             select_root(&[], &fixture.0, || Ok(Some(fixture.0.clone())), || false),
