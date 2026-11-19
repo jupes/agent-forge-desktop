@@ -39,7 +39,8 @@ profile and original receipts available before replacing the running app.
    supported session only with the operator's intended Bead and worktree.
 5. Change appearance, save, and exercise normal navigation. Close the new app:
    ordinary Close/Quit should exit without the repeated confirmation dialog.
-   If the explicit tray-keep option is enabled, record that separate behavior.
+   Confirm that the app's owned host and Hearth retire and that unrelated
+   processes remain running. Tray keep-alive is deferred to 1.1.
 6. Read and change launch-at-login through Settings, recording exact outcomes.
    Exercise upgrade/retirement/uninstall only as the next attended test step;
    preserve foreign entries, pending uncertainty and the existing profile.
