@@ -169,7 +169,7 @@ test("Start waits for the protected identity refresh emitted by preview", async 
   ).toHaveValue("codex-journeyman");
   await expect(
     dialog.getByRole("textbox", { name: "Session model", exact: true }),
-  ).toHaveValue("gpt-5-codex");
+  ).toHaveValue("gpt-6.1-sol");
   await dialog
     .getByRole("textbox", { name: "Session prompt", exact: true })
     .fill("Inspect private session activity");
