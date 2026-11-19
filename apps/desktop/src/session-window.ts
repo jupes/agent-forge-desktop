@@ -120,6 +120,7 @@ export function createSessionWindowClient(
   invoke: SessionWindowInvoke | null,
   changed: () => void,
 ) {
+  let addressed: SessionWindowTarget | null = null;
   const state = {
     busy: false,
     message: invoke
@@ -129,6 +130,14 @@ export function createSessionWindowClient(
   return {
     state,
     available: invoke !== null,
+    messageFor(target: SessionWindowTarget) {
+      return addressed &&
+        (addressed.projectId !== target.projectId ||
+          addressed.sessionId !== target.sessionId ||
+          addressed.shiftRequestId !== target.shiftRequestId)
+        ? ""
+        : state.message;
+    },
     async open(raw: SessionWindowTarget) {
       if (!invoke || state.busy) return;
       const parsed = sessionWindowTargetSchema.safeParse(raw);
@@ -137,6 +146,7 @@ export function createSessionWindowClient(
         changed();
         return;
       }
+      addressed = parsed.data;
       state.busy = true;
       state.message = "Opening this session in a compact window…";
       changed();
@@ -146,7 +156,7 @@ export function createSessionWindowClient(
         );
         state.message =
           reply.state === "created"
-            ? "Session window opened. The existing session continues in both views."
+            ? "Session window opened. Closing it leaves the session available."
             : reply.state === "focused"
               ? "The existing session window is now in front."
               : "This session window is already opening. No second window was created.";
