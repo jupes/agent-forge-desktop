@@ -104,6 +104,41 @@ test("popout client sends one validated native request while pending and never s
   expect(client.state.message).toContain("Session window opened");
   expect(client.state.busy).toBe(false);
 });
+test("late popout results stay with their exact project, session and Shift original", async () => {
+  let finish: ((value: unknown) => void) | null = null;
+  let count = 0;
+  const pending = new Promise<unknown>((resolve) => {
+    finish = resolve;
+  });
+  const client = createSessionWindowClient(
+    async () => {
+      count++;
+      return pending;
+    },
+    () => {},
+  );
+  const original = {
+    ...target,
+    shiftRequestId: "33333333-3333-4333-8333-333333333333",
+  };
+  const otherTargets = [
+    { ...original, projectId: "project-44444444-4444-4444-8444-444444444444" },
+    { ...original, sessionId: "session-55555555-5555-4555-8555-555555555555" },
+    { ...original, shiftRequestId: "66666666-6666-4666-8666-666666666666" },
+    target,
+  ];
+  const opening = client.open(original);
+  expect(client.messageFor(original)).toContain("Opening this session");
+  for (const other of otherTargets) {
+    expect(client.messageFor(other)).toBe("");
+    await client.open(other);
+  }
+  finish!({ state: "created", label: "foreign" });
+  await opening;
+  expect(count).toBe(1);
+  expect(client.messageFor(original)).toContain("could not be confirmed");
+  for (const other of otherTargets) expect(client.messageFor(other)).toBe("");
+});
 test("unknown native replies remain unconfirmed without automatic window retry", async () => {
   let count = 0;
   const client = createSessionWindowClient(

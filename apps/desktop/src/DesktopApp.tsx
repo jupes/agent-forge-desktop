@@ -4105,7 +4105,13 @@ function DesktopContent({
                 Pop out session
               </Button>
               <span role="status" aria-live="polite">
-                {sessionWindow.client.state.message}
+                {sessionWindow.client.messageFor({
+                  projectId: project.id,
+                  sessionId: selectedSession,
+                  ...(managedSelection.selection?.requestId
+                    ? { shiftRequestId: managedSelection.selection.requestId }
+                    : {}),
+                })}
               </span>
             </div>
           )}
