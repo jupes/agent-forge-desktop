@@ -89,14 +89,17 @@ vendor CLIs. These tools and capabilities are separately probed; they are not
 bundled or established by opening the app. A version response alone does not
 prove authentication. macOS is not qualified by these Windows receipts.
 
-From an isolated checkout of the reviewed source:
+From an isolated checkout of the reviewed desktop source, initialize its pinned
+engine and build the portable release folder:
 
 ```powershell
+git submodule update --init -- engine
 bun install --frozen-lockfile
 bun run desktop:build
 ```
 
-The build replaces that checkout's `apps/desktop/build/windows-x64` stage.
+The command assembles the desktop build workspace and replaces its
+`.work/desktop/apps/desktop/build/windows-x64` stage.
 Preserve any earlier frozen candidate before rebuilding. The current command
 produces a portable Release folder, not an installer. Keep its dashboard,
 desktop-host and Hearth sidecars together. Installer delivery and Windows
@@ -117,7 +120,7 @@ budgets remain consumed; this guide authorizes no rebuild or helper replay.
 Open `agent-forge-desktop.exe` to choose a checkout, or supply one explicitly:
 
 ```powershell
-.\apps\desktop\build\windows-x64\agent-forge-desktop.exe --root "C:\path\to\agent-forge-harness"
+.\.work\desktop\apps\desktop\build\windows-x64\agent-forge-desktop.exe --root "C:\path\to\agent-forge-harness"
 ```
 
 The app starts and supervises its own host/Hearth. An invalid explicit root is

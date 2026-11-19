@@ -23,13 +23,14 @@ not require Bun or Node on the runtime `PATH`. The build compiles the
 dashboard, desktop host, and hearth locally; it does not run `build-pages` or
 package a Beads snapshot.
 
-From the repository root, run `bun install --frozen-lockfile`, then
-`bun run desktop:build`. The Release executable and its dashboard/sidecar files
-are staged under `apps/desktop/build/windows-x64`. This is a runnable Release
-folder for the first tracer, not an installer. Open the executable normally
+From the desktop repository root, initialize the pinned engine with
+`git submodule update --init -- engine`. Run `bun install --frozen-lockfile`,
+then `bun run desktop:build`. The portable Release folder and its dashboard
+and sidecars are staged under `.work/desktop/apps/desktop/build/windows-x64`.
+Open the executable normally
 to choose an Agent Forge checkout in the native Windows folder picker. A
 valid current checkout is used directly. An explicit checkout path is also
-supported: `apps/desktop/build/windows-x64/agent-forge-desktop.exe --root <checkout>`.
+supported: `.work/desktop/apps/desktop/build/windows-x64/agent-forge-desktop.exe --root <checkout>`.
 An explicit invalid path is refused rather than replaced with a different
 workspace. Cancelling folder selection exits before starting the host. A
 folder missing the harness and Git markers offers Retry to choose again.
