@@ -662,7 +662,8 @@ export function CodexChatComposer({
         <p>
           Model access is checked by the native server when Chat starts. Exact
           model effort support is not reported by help. An unverified configured
-          effort stays selected until you explicitly change it.
+          effort stays selected until you explicitly change it. Choose "CLI
+          default" to leave effort unset before checking supported options.
         </p>
         <div class="af-session-composer-row">
           <label>
