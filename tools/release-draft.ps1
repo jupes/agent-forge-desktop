@@ -186,6 +186,9 @@ function Get-ForgeReleaseContext([string]$QualityRunId) {
   if($LASTEXITCODE -ne 0 -or $tree -cnotmatch '^[a-f0-9]{40}$'){throw 'Checkout tree unavailable.'}
   $ref=Invoke-ForgeApi 'git/ref/heads/main'
   if($ref.object.sha -cne $head){throw 'Default main moved; select its completed normal Quality run.'}
+  return Get-ForgeQualifiedSource $QualityRunId $head $tree
+}
+function Get-ForgeQualifiedSource([string]$QualityRunId,[string]$Head,[string]$Tree) {
   $run=Invoke-ForgeApi ('actions/runs/'+$QualityRunId)
   $jobs=Invoke-ForgeApi ('actions/runs/'+$QualityRunId+'/attempts/1/jobs?per_page=100')
   if($jobs.total_count -ne 7){throw 'Quality job catalog mismatch.'}
@@ -232,24 +235,33 @@ function Assert-ForgeOutputDirectory([string]$Directory) {
   if($absolute -cne $expected){throw 'Unexpected release staging directory.'}
   return $absolute
 }
-function Initialize-ForgeDraft([string]$QualityRunId,[string]$Directory) {
-  $expected=Get-ForgeReleaseContext $QualityRunId
-  $directory=Assert-ForgeOutputDirectory $Directory
+function Get-ForgeCandidateArtifact($Catalog,[string]$Kind,$Expected) {
+  $name='agent-forge-'+$Kind+'-'+$Expected.version+'-windows-x64-'+$Expected.sha
+  $found=@($Catalog.artifacts|Where-Object {$_.name -ceq $name})
+  if($found.Count -ne 1 -or $found[0].workflow_run.head_sha -cne $Expected.sha){throw 'Exact candidate artifact unavailable.'}
+  return $found[0]
+}
+function Assert-ForgeArchiveApproval($Artifact,[string]$ApprovedSha256) {
+  if($ApprovedSha256 -cnotmatch '^[a-f0-9]{64}$' -or $Artifact.expired -ne $false -or $Artifact.digest -cne ('sha256:'+$ApprovedSha256)){throw 'Earlier installer archive is expired or differs from its approved public digest.'}
+}
+function Export-ForgeCandidatePair($Expected,[string]$Directory,[string]$ApprovedInstallerArchiveSha256) {
   if(Test-Path -LiteralPath $directory){throw 'Preserve existing staging evidence; do not overwrite.'}
   [IO.Directory]::CreateDirectory($directory)|Out-Null
-  $all=Invoke-ForgeApi ('actions/runs/'+$QualityRunId+'/artifacts?per_page=100')
+  $all=Invoke-ForgeApi ('actions/runs/'+($expected.runId)+'/artifacts?per_page=100')
   if($all.total_count -ge 100){throw 'Artifact catalog exceeds bound.'}
+  if($PSBoundParameters.ContainsKey('ApprovedInstallerArchiveSha256')){
+    $installerArtifact=Get-ForgeCandidateArtifact $all 'installer' $expected
+    Assert-ForgeArchiveApproval $installerArtifact $ApprovedInstallerArchiveSha256
+  }
   $downloads=@();$indexes=@();$remainingBytes=2147483648L;$remainingEntries=12000
   foreach($kind in @('desktop','installer')) {
-    $name='agent-forge-'+$kind+'-'+$expected.version+'-windows-x64-'+$expected.sha
-    $found=@($all.artifacts|Where-Object {$_.name -ceq $name})
-    if($found.Count -ne 1 -or $found[0].workflow_run.head_sha -cne $expected.sha){throw 'Exact candidate artifact unavailable.'}
+    $artifact=Get-ForgeCandidateArtifact $all $kind $expected
     $asset=if($kind -eq 'desktop'){'agent-forge-desktop-'+$expected.version+'-windows-x64.zip'}else{'agent-forge-installer-'+$expected.version+'-windows-x64-review.zip'}
     $path=Join-Path $directory $asset
-    Receive-ForgeArtifact $found[0] $path
+    Receive-ForgeArtifact $artifact $path
     $index=Get-ForgeZipIndex $path -RemainingBytes $remainingBytes -RemainingEntries $remainingEntries
     $remainingBytes-=$index.bytes;$remainingEntries-=$index.entries
-    $indexes+=,$index;$downloads+=@{id=$found[0].id;name=$name;asset=$asset;sha256=(Get-ForgeHash $path)}
+    $indexes+=,$index;$downloads+=@{id=$artifact.id;name=$artifact.name;asset=$asset;sha256=(Get-ForgeHash $path)}
   }
   $pair=Assert-ForgeCandidatePair $indexes[0] $indexes[1] $expected
   $setup=$pair.installer.installer.path
@@ -261,6 +273,13 @@ function Initialize-ForgeDraft([string]$QualityRunId,[string]$Directory) {
     try{$inputStream.CopyTo($output)}finally{$inputStream.Dispose();$output.Dispose()}
   }finally{$zip.Dispose()}
   if((Get-ForgeHash (Join-Path $directory $setup)) -cne $pair.installer.installer.sha256){throw 'Extracted installer hash mismatch.'}
+  return @{pair=$pair;downloads=$downloads}
+}
+function Initialize-ForgeDraft([string]$QualityRunId,[string]$Directory) {
+  $expected=Get-ForgeReleaseContext $QualityRunId
+  $directory=Assert-ForgeOutputDirectory $Directory
+  $files=Export-ForgeCandidatePair $expected $directory
+  $pair=$files.pair;$downloads=$files.downloads;$setup=$pair.installer.installer.path
   $review=@{schemaVersion=1;disposition='unpublished unsigned engineering review; stable1.0 acceptance remains held';source=$expected;qualityRun=('https://github.com/jupes/agent-forge-desktop/actions/runs/'+$QualityRunId);artifacts=$downloads;portable=$pair.portable;installer=$pair.installer;executed=$false}
   Write-ForgeJson (Join-Path $directory 'RELEASE-REVIEW.json') $review
   $names=@($downloads[0].asset,$downloads[1].asset,$setup,'RELEASE-REVIEW.json')

@@ -1,0 +1,82 @@
+name: Check Windows installer lifecycle
+on:
+  workflow_dispatch:
+    inputs:
+      current_run:
+        description: Successful attempt-one Quality push for the current main SHA
+        required: true
+        type: string
+      current_setup_sha256:
+        description: Independently reviewed current NSIS setup SHA256
+        required: true
+        type: string
+      prior_run:
+        description: Successful attempt-one main Quality push for the approved earlier version
+        required: true
+        type: string
+      prior_archive_sha256:
+        description: Approved earlier public Quality installer review ZIP SHA256
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: windows-installer-lifecycle
+  cancel-in-progress: false
+jobs:
+  lifecycle:
+    if: github.repository == 'jupes/agent-forge-desktop' && github.ref == 'refs/heads/main'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CURRENT_QUALITY_RUN: ${{ inputs.current_run }}
+      PRIOR_QUALITY_RUN: ${{ inputs.prior_run }}
+      CURRENT_SETUP_SHA256: ${{ inputs.current_setup_sha256 }}
+      PRIOR_ARCHIVE_SHA256: ${{ inputs.prior_archive_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          submodules: true
+          persist-credentials: false
+      - name: Verify selected public Quality runs and execution allowance
+        id: selected
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/installer-lifecycle.ps1 -Mode Select
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.selected.outputs.prior_sha }}
+          path: prior-candidate-source
+          submodules: true
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Check lifecycle rules against inert fixtures
+        run: ./tools/installer-lifecycle.test.ps1
+      - name: Assemble current source identity
+        run: |
+          bun tools/workspace.ts *> $null
+          if ($LASTEXITCODE -ne 0) { throw 'Source assembly failed.' }
+      - name: Assemble prior source identity
+        working-directory: prior-candidate-source
+        run: |
+          bun tools/workspace.ts *> $null
+          if ($LASTEXITCODE -ne 0) { throw 'Source assembly failed.' }
+      - name: Verify both bounded portable and NSIS archive pairs
+        id: verified
+        timeout-minutes: 16
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./tools/installer-lifecycle.ps1 -Mode Verify
+      - name: Check fresh install, version upgrade, and uninstall on this runner
+        timeout-minutes: 10
+        env:
+          VERIFIED_PRIOR_SETUP_SHA256: ${{ steps.verified.outputs.prior_setup_sha256 }}
+        run: ./tools/installer-lifecycle.ps1 -Mode Exercise
