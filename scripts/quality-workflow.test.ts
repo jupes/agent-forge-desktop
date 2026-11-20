@@ -136,6 +136,42 @@ test("one workflow-level Bun version feeds every action and npm runtime installa
   expect(npmInstalls.some((step) => step.run?.includes("apt-get"))).toBe(false);
 });
 
+test("browser shards build the verified Git source without installing a compiler from a package mirror", () => {
+  const steps = workflow.jobs.e2e!.steps;
+  const build = steps.find(
+    (step) => step.uses === "./.github/actions/pinned-git",
+  );
+  expect(build?.["timeout-minutes"]).toBe(6);
+  expect(steps.some((step) => step.run?.includes("apt-get"))).toBe(false);
+  const directory = join(import.meta.dir, "../.github/actions/pinned-git");
+  const action = parse(readFileSync(join(directory, "action.yml"), "utf8"));
+  expect(action.runs.using).toBe("composite");
+  const [compiler, consumer] = action.runs.steps as Step[];
+  expect(compiler?.uses).toMatch(
+    /^docker:\/\/docker\.io\/library\/buildpack-deps@sha256:[a-f0-9]{64}$/,
+  );
+  expect(compiler?.with?.args).toBe(".github/actions/pinned-git/build.sh");
+  const source = readFileSync(join(directory, "build.sh"), "utf8");
+  expect(source).toContain("git-2.55.1.tar.xz");
+  expect(source).toContain(
+    "7bc345dba23c9089fa71bcf4e793d13d204fdc99b96abc118b3a29c18159eb16",
+  );
+  expect(source.indexOf("sha256sum --check --strict")).toBeGreaterThan(0);
+  expect(source.indexOf("tar -xJf")).toBeGreaterThan(
+    source.indexOf("sha256sum --check --strict"),
+  );
+  expect(source).toContain("timeout --kill-after=5s 180s make");
+  for (const probe of [
+    "HEAD^{commit}",
+    "HEAD^{tree}",
+    "--no-lazy-fetch",
+    "--exec-path",
+    "git version 2.55.1",
+  ]) {
+    expect(consumer?.run).toContain(probe);
+  }
+});
+
 test("every dependency install first restores a Bun download cache keyed by OS, that Bun version and the lockfile", () => {
   const installs = Object.values(workflow.jobs).filter((job) =>
     (job.steps ?? []).some(
