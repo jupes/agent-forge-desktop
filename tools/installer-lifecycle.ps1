@@ -50,6 +50,39 @@ function Select-LifecycleSources {
   Assert-LifecycleVersions (Get-CommitFile $commits[1] 'package.json').version (Get-CommitFile $head 'package.json').version
   "prior_sha=$($commits[1])" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
 }
+function Get-VerifiedManifestFacts($Pairs) {
+  $facts=[ordered]@{}
+  foreach($role in @('prior','current')) {
+    $m=$Pairs[$role].installer
+    $identity=[ordered]@{sourceCommit=$m.sourceCommit;sourceTree=$m.sourceTree;engineCommit=$m.engineCommit;desktopSourceDigest=$m.desktopSourceDigest;nsisMainSha256=$m.mainBinarySha256;setupSha256=$m.installer.sha256}
+    foreach($field in @('sourceCommit','sourceTree','engineCommit')) {
+      if($identity[$field] -isnot [string] -or $identity[$field] -cnotmatch '\A[a-f0-9]{40}\z') { throw 'Invalid verified source identity.' }
+    }
+    foreach($field in @('desktopSourceDigest','nsisMainSha256','setupSha256')) {
+      if($identity[$field] -isnot [string] -or $identity[$field] -cnotmatch '\A[a-f0-9]{64}\z') { throw 'Invalid verified package digest.' }
+    }
+    $facts[$role]=$identity
+  }
+  # The authenticated portable manifests contain regular file rows. Compare with Windows path semantics.
+  $currentPaths=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach($row in $Pairs.current.portable.files) { $null=$currentPaths.Add($row.path) }
+  $oldOnly=@($Pairs.prior.portable.files | Where-Object { !$currentPaths.Contains($_.path) })
+  $inventory=[ordered]@{count=$oldOnly.Count;status='none';asset=$null}
+  if($oldOnly.Count -gt 1) {
+    $inventory.status='multiple-ineligible'
+  } elseif($oldOnly.Count -eq 1) {
+    $row=$oldOnly[0]
+    $inventory.status='ineligible'
+    if(($row.bytes -is [int] -or $row.bytes -is [long]) -and $row.bytes -gt 0 -and $row.bytes -le 2147483648L -and
+       $row.sha256 -is [string] -and $row.sha256 -cmatch '\A[a-f0-9]{64}\z' -and $row.path -is [string] -and
+       $row.path -cmatch '\Adashboard/assets/(index-[A-Za-z0-9_-]{6,32}[.]js)\z') {
+      $inventory.status='single-generated-asset'
+      $inventory.asset=[ordered]@{basename=$Matches[1];bytes=$row.bytes;sha256=$row.sha256}
+    }
+  }
+  $facts.priorOnlyPortableFiles=$inventory
+  return $facts
+}
 function Save-VerifiedPackages([string]$Stage) {
   $current=Get-ForgeReleaseContext $env:CURRENT_QUALITY_RUN
   Push-Location -LiteralPath 'prior-candidate-source'
@@ -63,21 +96,27 @@ function Save-VerifiedPackages([string]$Stage) {
   Assert-LifecycleVersions $prior.version $current.version
   if(Test-Path -LiteralPath $Stage) { throw 'Existing stage must be preserved.' }
   $null=New-Item -ItemType Directory -Path $Stage
+  $pairs=@{}
   foreach($name in @('prior','current')) {
     $expected=if($name -ceq 'prior') {$prior} else {$current}
     $dir=Join-Path $Stage $name
     $script:lifecyclePhase='verify-'+$name
     if($name -ceq 'prior') {
       $verified=Export-ForgeCandidatePair $expected $dir -ApprovedInstallerArchiveSha256 $env:PRIOR_ARCHIVE_SHA256
-      "prior_setup_sha256=$($verified.pair.installer.installer.sha256)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
     } else {
       $verified=Export-ForgeCandidatePair $expected $dir
       if($verified.pair.installer.installer.sha256 -cne $env:CURRENT_SETUP_SHA256) { throw 'Current setup differs from independently reviewed bytes.' }
     }
     Write-ForgeJson (Join-Path $dir 'verified-payload.json') $verified.pair
+    $pairs[$name]=$verified.pair
   }
   $final=Invoke-ForgeApi 'git/ref/heads/main'
   if($final.object.sha -cne $current.sha) { throw 'Main changed while preparing the test.' }
+  $publicFacts=Get-VerifiedManifestFacts $pairs
+  "prior_setup_sha256=$($publicFacts.prior.setupSha256)" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+  $report='Verified public manifest facts '+($publicFacts | ConvertTo-Json -Depth 4 -Compress)
+  Write-Host $report
+  $report | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 }
 function Get-PackageReceipt([string]$Stage,[string]$Role,[string]$Approved) {
   $dir=Join-Path $Stage $Role
