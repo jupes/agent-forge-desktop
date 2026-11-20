@@ -65,6 +65,7 @@ unsafe extern "system" {
         fs_size: u32,
     ) -> i32;
     fn GetDriveTypeW(root: *const u16) -> u32;
+    fn GetLastError() -> u32;
     fn CloseHandle(handle: RawHandle) -> i32;
 }
 #[link(name = "ktmw32")]
@@ -287,10 +288,11 @@ fn transacted_open(
     transaction: &Transaction,
     create: bool,
     security: *const c_void,
-) -> Result<File, Refusal> {
-    file_from(unsafe {
+) -> Result<File, u32> {
+    let path = wide(path);
+    let handle = unsafe {
         CreateFileTransactedW(
-            wide(path).as_ptr(),
+            path.as_ptr(),
             READ | WRITE,
             7,
             security,
@@ -301,7 +303,32 @@ fn transacted_open(
             null(),
             null(),
         )
-    })
+    };
+    // Capture the failing call's code before the path buffer or any handle is dropped.
+    file_from(handle).map_err(|_| unsafe { GetLastError() })
+}
+fn receipt_create_refusal(code: u32) -> Refusal {
+    match code {
+        80 | 183 => Refusal::ReceiptExists, // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS
+        _ => Refusal::Unavailable,
+    }
+}
+
+// Tests keep one scalar failure record per test thread. No native details escape the public API.
+macro_rules! prepare_refusal {
+    ($phase:literal, $reason:expr) => {
+        prepare_refusal!($phase, $reason, None)
+    };
+    ($phase:literal, $reason:expr, $code:expr) => {{
+        #[cfg(test)]
+        tests::PREPARE_FAILURE.set(($phase, $code));
+        $reason
+    }};
+}
+fn prepare_io_refusal(_phase: &'static str, _error: std::io::Error) -> Refusal {
+    #[cfg(test)]
+    tests::PREPARE_FAILURE.set((_phase, _error.raw_os_error().map(|code| code as u32)));
+    Refusal::Unavailable
 }
 /// Preparing changes only the isolated transaction view. The original and receipt are
 /// published together by commit. Dropping this value closes the last transaction handle.
@@ -340,23 +367,32 @@ fn prepare_with_security(
     security: *const c_void,
 ) -> Result<PendingPublication, Refusal> {
     if after.len() > MAX_BYTES || receipt_bytes.is_empty() || receipt_bytes.len() > 8192 {
-        return Err(Refusal::TooLarge);
+        return Err(prepare_refusal!("input-size", Refusal::TooLarge));
     }
     if receipt.file.is_some() {
-        return Err(Refusal::ReceiptExists);
+        return Err(prepare_refusal!(
+            "reviewed-receipt-exists",
+            Refusal::ReceiptExists
+        ));
     }
-    let (mut pins, parents) = pin_parents(&reviewed.path)?;
-    let (receipt_pins, receipt_parents) = pin_parents(&receipt.path)?;
+    let (mut pins, parents) = pin_parents(&reviewed.path)
+        .map_err(|reason| prepare_refusal!("target-parent-pin", reason))?;
+    let (receipt_pins, receipt_parents) = pin_parents(&receipt.path)
+        .map_err(|reason| prepare_refusal!("receipt-parent-pin", reason))?;
     if parents != reviewed.parents || receipt_parents != receipt.parents {
-        return Err(Refusal::Changed);
+        return Err(prepare_refusal!("parent-identity", Refusal::Changed));
     }
     if parents.first().map(|p| p.volume) != receipt_parents.first().map(|p| p.volume) {
-        return Err(Refusal::Unsupported);
+        return Err(prepare_refusal!("same-volume", Refusal::Unsupported));
     }
     pins.extend(receipt_pins);
     let handle = unsafe { CreateTransaction(null(), null(), 0, 0, 0, 5000, null()) };
     if handle == (-1isize as RawHandle) || handle.is_null() {
-        return Err(Refusal::Unsupported);
+        return Err(prepare_refusal!(
+            "begin-transaction",
+            Refusal::Unsupported,
+            Some(unsafe { GetLastError() })
+        ));
     }
     let transaction = Transaction(handle);
     {
@@ -371,25 +407,34 @@ fn prepare_with_security(
             } else {
                 null()
             },
-        )?;
-        let actual_id = identity(&file, false)?;
-        if reviewed.file.is_some_and(|id| id != actual_id)
-            || read_bytes(&mut file)? != reviewed.bytes
+        )
+        .map_err(|_code| prepare_refusal!("target-open", Refusal::Unavailable, Some(_code)))?;
+        let actual_id =
+            identity(&file, false).map_err(|reason| prepare_refusal!("target-identity", reason))?;
+        if reviewed.file.is_some_and(|id| id != actual_id) {
+            return Err(prepare_refusal!("target-identity", Refusal::Changed));
+        }
+        if read_bytes(&mut file).map_err(|reason| prepare_refusal!("target-read", reason))?
+            != reviewed.bytes
         {
-            return Err(Refusal::Changed);
+            return Err(prepare_refusal!("target-content", Refusal::Changed));
         }
         // These are private TxF copy-on-write operations, never ordinary truncation.
         file.seek(SeekFrom::Start(0))
-            .map_err(|_| Refusal::Unavailable)?;
-        file.write_all(after).map_err(|_| Refusal::Unavailable)?;
+            .map_err(|error| prepare_io_refusal("target-seek", error))?;
+        file.write_all(after)
+            .map_err(|error| prepare_io_refusal("target-write", error))?;
         file.set_len(after.len() as u64)
-            .map_err(|_| Refusal::Unavailable)?;
+            .map_err(|error| prepare_io_refusal("target-length", error))?;
         let mut receipt_file = transacted_open(&receipt.path, &transaction, true, security)
-            .map_err(|_| Refusal::ReceiptExists)?;
-        identity(&receipt_file, false)?;
+            .map_err(|code| {
+                prepare_refusal!("receipt-create", receipt_create_refusal(code), Some(code))
+            })?;
+        identity(&receipt_file, false)
+            .map_err(|reason| prepare_refusal!("receipt-identity", reason))?;
         receipt_file
             .write_all(receipt_bytes)
-            .map_err(|_| Refusal::Unavailable)?;
+            .map_err(|error| prepare_io_refusal("receipt-write", error))?;
     }
     // Every transacted file handle has closed. TxF isolation remains until commit/rollback.
     Ok(PendingPublication {
@@ -459,7 +504,13 @@ pub fn os_user_profile() -> Result<PathBuf, Refusal> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Instant;
+    thread_local! {
+        pub(super) static PREPARE_FAILURE: Cell<(&'static str, Option<u32>)> =
+            const { Cell::new(("unobserved", None)) };
+    }
     static NEXT: AtomicU64 = AtomicU64::new(0);
     struct Scratch(PathBuf);
     impl Scratch {
@@ -496,14 +547,87 @@ mod tests {
     fn staged(box_: &Scratch) -> PendingPublication {
         let config = box_.path("client.json");
         std::fs::write(&config, b"original private settings").unwrap();
+        let reviewed = review(&config).unwrap();
+        let receipt = review(&box_.path("receipt.json")).unwrap();
+        PREPARE_FAILURE.set(("unobserved", None));
+        let started = Instant::now();
         prepare(
-            review(&config).unwrap(),
+            reviewed,
             b"new settings",
-            review(&box_.path("receipt.json")).unwrap(),
+            receipt,
             b"exact request and revision receipt",
         )
-        .ok()
-        .expect("NTFS transaction source qualification is required")
+        .unwrap_or_else(|reason| {
+            let (phase, win32) = PREPARE_FAILURE.get();
+            let prepare_ms = started.elapsed().as_millis();
+            panic!(
+                "NTFS transaction source qualification is required: {reason:?}, \
+                 phase={phase}, win32={win32:?}, prepare_ms={prepare_ms}"
+            )
+        })
+    }
+    #[test]
+    fn receipt_create_recognizes_only_existing_file_errors() {
+        for code in [80, 183] {
+            assert_eq!(receipt_create_refusal(code), Refusal::ReceiptExists);
+        }
+        // A missing native code and access, sharing, timeout or transaction failures.
+        for code in [0, 5, 32, 1460, 6701, 6800] {
+            assert_eq!(receipt_create_refusal(code), Refusal::Unavailable);
+        }
+    }
+    #[test]
+    fn an_uncommitted_receipt_reservation_is_not_a_durable_receipt() {
+        let scratch = Scratch::new();
+        let first = scratch.path("first.json");
+        let second = scratch.path("second.json");
+        let receipt = scratch.path("receipt.json");
+        std::fs::write(&first, b"first").unwrap();
+        std::fs::write(&second, b"second").unwrap();
+        let second_target = review(&second).unwrap();
+        let second_receipt = review(&receipt).unwrap();
+        let owner = prepare(
+            review(&first).unwrap(),
+            b"first change",
+            review(&receipt).unwrap(),
+            b"first receipt",
+        )
+        .unwrap();
+        assert!(matches!(
+            prepare(
+                second_target,
+                b"second change",
+                second_receipt,
+                b"second receipt"
+            ),
+            Err(Refusal::Unavailable)
+        ));
+        assert!(matches!(PREPARE_FAILURE.get(), ("receipt-create", Some(_))));
+        drop(owner);
+        assert!(!receipt.exists());
+        assert_eq!(std::fs::read(first).unwrap(), b"first");
+        assert_eq!(std::fs::read(second).unwrap(), b"second");
+    }
+    #[test]
+    fn a_reader_denying_writes_reports_target_open_and_preserves_both_files() {
+        let box_ = Scratch::new();
+        let path = box_.path("client.json");
+        std::fs::write(&path, b"reviewed").unwrap();
+        let target = review(&path).unwrap();
+        let receipt_path = box_.path("receipt.json");
+        let receipt = review(&receipt_path).unwrap();
+        let reader = normal_open(&path, false).unwrap();
+        assert!(matches!(
+            prepare(target, b"ours", receipt, b"receipt"),
+            Err(Refusal::Unavailable)
+        ));
+        assert!(matches!(
+            PREPARE_FAILURE.get(),
+            ("target-open", Some(code)) if code != 0
+        ));
+        drop(reader);
+        assert_eq!(std::fs::read(path).unwrap(), b"reviewed");
+        assert!(!receipt_path.exists());
     }
     #[test]
     fn isolated_changes_and_receipt_publish_together_with_same_file_identity() {
@@ -685,6 +809,10 @@ mod tests {
         assert!(matches!(
             prepare(review(&path).unwrap(), b"ours", receipt, b"receipt"),
             Err(Refusal::ReceiptExists)
+        ));
+        assert!(matches!(
+            PREPARE_FAILURE.get(),
+            ("receipt-create", Some(80 | 183))
         ));
         assert_eq!(std::fs::read(&path).unwrap(), b"reviewed");
         assert_eq!(
