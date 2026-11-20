@@ -23,11 +23,19 @@ not require Bun or Node on the runtime `PATH`. The build compiles the
 dashboard, desktop host, and hearth locally; it does not run `build-pages` or
 package a Beads snapshot.
 
-From the desktop repository root, initialize the pinned engine with
-`git submodule update --init -- engine`. Run `bun install --frozen-lockfile`,
-then `bun run desktop:build`. The portable Release folder and its dashboard
-and sidecars are staged under `.work/desktop/apps/desktop/build/windows-x64`.
-Open the executable normally
+Run these PowerShell commands from the desktop repository root. They initialize
+the pinned engine, assemble the desktop workspace and install its locked dependencies
+before building the portable Release folder.
+
+```powershell
+git submodule update --init -- engine
+bun run prepare
+bun install --cwd=.work/desktop --frozen-lockfile
+bun run desktop:build
+```
+
+The build stages the executable, dashboard and sidecars under
+`.work/desktop/apps/desktop/build/windows-x64`. Open the executable normally
 to choose an Agent Forge checkout in the native Windows folder picker. A
 valid current checkout is used directly. An explicit checkout path is also
 supported: `.work/desktop/apps/desktop/build/windows-x64/agent-forge-desktop.exe --root <checkout>`.
@@ -45,12 +53,12 @@ credentials are never shown in the dialog.
 
 ![Invalid checkout offers selection retry or cancellation](docs/native-workspace-warning.png)
 
-After `bun run desktop:build` has produced the dashboard assets and sidecars,
-run the native Rust checks:
+After the build stages the dashboard assets and sidecars, run the Rust checks
+against the assembled crate from the desktop repository root.
 
 ```powershell
-cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
-cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo fmt --manifest-path .work/desktop/apps/desktop/src-tauri/Cargo.toml -- --check
+cargo test --locked --manifest-path .work/desktop/apps/desktop/src-tauri/Cargo.toml
 ```
 
 **Historical native smoke and recovery evidence:** the retained smoke helper and

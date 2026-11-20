@@ -89,17 +89,18 @@ vendor CLIs. These tools and capabilities are separately probed; they are not
 bundled or established by opening the app. A version response alone does not
 prove authentication. macOS is not qualified by these Windows receipts.
 
-From an isolated checkout of the reviewed desktop source, initialize its pinned
-engine and build the portable release folder:
+From the root of an isolated checkout of the reviewed desktop source, initialize
+the pinned engine and assemble the workspace before installing its dependencies.
 
 ```powershell
 git submodule update --init -- engine
-bun install --frozen-lockfile
+bun run prepare
+bun install --cwd=.work/desktop --frozen-lockfile
 bun run desktop:build
 ```
 
-The command assembles the desktop build workspace and replaces its
-`.work/desktop/apps/desktop/build/windows-x64` stage.
+The build replaces the portable release folder at
+`.work/desktop/apps/desktop/build/windows-x64`.
 Preserve any earlier frozen candidate before rebuilding. The current command
 produces a portable Release folder, not an installer. Keep its dashboard,
 desktop-host and Hearth sidecars together. Installer delivery and Windows
