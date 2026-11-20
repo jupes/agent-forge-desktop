@@ -94,6 +94,27 @@ try {
   $facts=Get-RemovalFacts $residual $new $old
   if($facts.priorOnlyExact -ne 1 -or $facts.priorDirectories -ne 1) { throw 'Prior-only bytes misclassified.' }
   Assert-RemovalFacts $facts $true
+  Assert-Fails { Assert-CompleteRemoval $facts }
+  Assert-CompleteRemoval (Get-RemovalFacts (Join-Path $dir 'absent-install') $new $old)
+  # Exercise the normal uninstall reporting path with an inert filesystem and an untouched earlier payload.
+  & {
+    function Invoke-GuestPackage([string]$Path) { }
+    function Get-ActiveGeneration { }
+    function Assert-PreservedGuest { }
+    $guest=@{dir=$residual;uninstaller=(Join-Path $residual 'uninstall.exe');uninstall=(Join-Path $dir 'absent-registration')}
+    $priorSummary=$env:GITHUB_STEP_SUMMARY
+    try {
+      $env:GITHUB_STEP_SUMMARY=Join-Path $dir 'synthetic-summary.txt'
+      $script:lifecyclePhase='upgrade-uninstall'
+      Assert-Fails { Uninstall-GuestPackage $guest 'second' 'inert foreign value' $new $old @('first') 6>$null }
+      if($script:lifecycleCheck -cne 'complete-removal') { throw 'Wrong final uninstall failure.' }
+      $summary=Get-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Raw
+      foreach($field in @('"priorOnlyExact":1','"registrationAbsent":true','"verifiedRetiredGenerations":2','"productRunSlot":"foreign-value-preserved"','"unrelatedRunValuePreserved":true','"syntheticProfilePreserved":true','upgrade-uninstall complete removal failed.')) {
+        if(!$summary.Contains($field)) { throw 'Missing partial uninstall evidence.' }
+      }
+      if($summary.Contains('complete removal passed') -or (Get-ForgeHash $oldPath) -cne $old.files[0].sha256) { throw 'Incorrect uninstall success or changed fixture payload.' }
+    } finally { $env:GITHUB_STEP_SUMMARY=$priorSummary }
+  }
   Assert-Fails { Assert-RemovalFacts $facts $false }
   [IO.File]::WriteAllText($oldPath,'bad')
   [IO.File]::WriteAllText((Join-Path $residual 'main.txt'),'old')

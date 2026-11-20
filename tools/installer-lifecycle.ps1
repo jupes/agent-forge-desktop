@@ -223,6 +223,11 @@ function Assert-RemovalFacts($Facts,[bool]$Upgraded) {
   if($Facts.registrationPresent -or $Facts.currentExact -or $Facts.currentChanged -or $Facts.priorOnlyChanged -or $Facts.foreignFiles -or $Facts.foreignDirectories -or $Facts.links) { throw 'Unexpected residual installation state.' }
   if($Facts.targetPresent -and (!$Upgraded -or !$Facts.priorOnlyExact)) { throw 'Install target remained without an identified earlier payload.' }
 }
+function Assert-CompleteRemoval($Facts) {
+  if($Facts.targetPresent -or $Facts.priorOnlyExact -gt 0) {
+    throw 'Complete removal failed; the owned installation target or verified prior payload remains.'
+  }
+}
 function Uninstall-GuestPackage($Guest,[string]$ExpectedGeneration,$ExpectedRun,$Current,$Prior,[string[]]$EarlierRetired) {
   Invoke-GuestPackage $Guest.uninstaller
   # NSIS may finish uninstall from its temporary copy after its original process exits.
@@ -237,12 +242,29 @@ function Uninstall-GuestPackage($Guest,[string]$ExpectedGeneration,$ExpectedRun,
   $report=$script:lifecyclePhase+' residual counts '+($facts | ConvertTo-Json -Compress)
   Write-Host $report
   $report | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
-  if($facts.priorOnlyExact) { 'Complete file removal remains open for the observed prior-only payload.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
-  Assert-RemovalFacts $facts ($null -ne $Prior)
   $script:lifecycleCheck='retired-generation'
   Get-ActiveGeneration $Guest.state 'retired' $ExpectedGeneration $Guest.ownedCommand $Guest.principal $EarlierRetired
   $script:lifecycleCheck='synthetic-profile-and-run-key'
   Assert-PreservedGuest $Guest $ExpectedRun
+  $observation=[ordered]@{
+    registrationAbsent=(!$facts.registrationPresent)
+    verifiedRetiredGenerations=(1+@($EarlierRetired | Where-Object { $_ }).Count)
+    productRunSlot=if($null -eq $ExpectedRun) { 'owned-value-removed' } else { 'foreign-value-preserved' }
+    unrelatedRunValuePreserved=$true
+    syntheticProfilePreserved=$true
+  }
+  $observed=$script:lifecyclePhase+' guest observations '+($observation | ConvertTo-Json -Compress)
+  Write-Host $observed
+  $observed | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+  $script:lifecycleCheck='residual-classification'
+  Assert-RemovalFacts $facts ($null -ne $Prior)
+  $script:lifecycleCheck='complete-removal'
+  try { Assert-CompleteRemoval $facts }
+  catch {
+    ($script:lifecyclePhase+' complete removal failed.') | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+    throw
+  }
+  ($script:lifecyclePhase+' complete removal passed.') | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 }
 function Test-GuestLifecycle([string]$Stage) {
   $script:lifecyclePhase='verified-receipts'
@@ -250,6 +272,7 @@ function Test-GuestLifecycle([string]$Stage) {
   $prior=Get-PackageReceipt $Stage prior $env:VERIFIED_PRIOR_SETUP_SHA256
   $current=Get-PackageReceipt $Stage current $env:CURRENT_SETUP_SHA256
   Assert-LifecycleVersions $prior.version $current.version
+  "Current Quality $env:CURRENT_QUALITY_RUN, setup SHA256 $env:CURRENT_SETUP_SHA256. Earlier Quality $env:PRIOR_QUALITY_RUN, installer archive SHA256 $env:PRIOR_ARCHIVE_SHA256, verified setup SHA256 $env:VERIFIED_PRIOR_SETUP_SHA256." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
   $script:lifecyclePhase='clean-guest'
   $local=[Environment]::GetFolderPath('LocalApplicationData')
   $dir=Join-Path $local 'Agent Forge Harness'
@@ -285,7 +308,6 @@ function Test-GuestLifecycle([string]$Stage) {
   if($before -cne $after) { throw 'Upgrade changed active startup generation.' }
   $script:lifecyclePhase='upgrade-uninstall'
   Uninstall-GuestPackage $guest $after $foreignRun $current $prior @($first)
-  "Current Quality $env:CURRENT_QUALITY_RUN, setup SHA256 $env:CURRENT_SETUP_SHA256. Earlier Quality $env:PRIOR_QUALITY_RUN, installer archive SHA256 $env:PRIOR_ARCHIVE_SHA256, verified setup SHA256 $env:VERIFIED_PRIOR_SETUP_SHA256." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
   'Verified NSIS current fresh install, prior-to-current upgrade, uninstall, generation retirement, exact owned Run removal, foreign Run preservation, and synthetic profile preservation.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 }
 
