@@ -51,8 +51,8 @@ filtered read and connected context. Progress always uses the full scoped data.
 
 ## Run locally on Windows
 
-The fastest route in an already installed checkout is the desktop renderer in
-your browser. Use **Bun 1.4.2**, the version pinned in the Quality workflow:
+For a fresh desktop source checkout, follow the [development setup](../../../README.md#development)
+through the frozen install in `.work/desktop`. Use a standalone checkout or a worktree with its own dependencies.
 
 Live Beads also requires `bd` on PATH (`bd --version`) and an initialized local
 tracker in the selected checkout. Native packaging bundles its Bun runtime,
@@ -62,38 +62,22 @@ starting the app, so its child hearth processes find the same version; no
 system-wide PATH change is needed.
 
 ```powershell
-# From the repository root, with Bun 1.4.2 on PATH:
+# From the desktop source root, with Bun 1.4.2 on PATH
 bun --version
 bun run dashboard --mode desktop
 ```
 
 Open the **fresh launch link printed by the command**, not a saved bare URL.
 The launch establishes the local dashboard session. If it expires, run
-`bun run dashboard:open` in another terminal and use that newly printed link.
+`bun run dashboard:open` in another terminal from `.work/desktop` for a fresh link.
 Do not share launch links. Stop the dev server with Ctrl+C when finished.
 
-For a fresh source checkout:
+For the native Windows app, follow the [desktop build guide](../README.md).
+A fresh clone has no local tracker or saved project catalog. When ready, launch
+from the desktop source root and pass your existing harness checkout to `--root`.
 
 ```powershell
-git clone https://github.com/jupes/agent-forge-harness.git agent-forge-local
-Set-Location agent-forge-local
-bun install --frozen-lockfile
-```
-
-A fresh clone contains code, not this machine's local-only tracker or saved
-project catalog. To browse your existing work, use your existing checkout as
-the native app's `--root` below. Install dependencies only in a standalone
-checkout or a worktree with its own dependencies, never over another worktree's
-shared dependency junction.
-
-For the native Windows app, the build prerequisites are Bun 1.4.2, the validated
-Rust 1.99.1 toolchain, Visual Studio C++ Build Tools with MSVC/Windows SDK, and the
-WebView2 Runtime. See [the desktop build guide](../README.md). Build without
-launching any tests, then launch when you are ready:
-
-```powershell
-bun run desktop:build
-& '.\apps\desktop\build\windows-x64\agent-forge-desktop.exe' --root 'C:\path\to\your\existing\agent-forge-harness'
+& '.\.work\desktop\apps\desktop\build\windows-x64\agent-forge-desktop.exe' --root 'C:\path\to\your\existing\agent-forge-harness'
 ```
 
 Keep the complete staged `windows-x64` folder together: the executable needs its
@@ -116,9 +100,10 @@ not contain the new work map. The staged Release folder is not an installer.
 6. Resize to 1100×700. Controls should wrap and graph scrolling should stay inside
    the diagram. For large projects, verify the explicit diagram limit and outline.
 
-Focused headless regression check (no windows or providers):
+Run these headless checks from the prepared workspace. From the desktop source root, start with the directory change shown below.
 
 ```powershell
+Set-Location .work/desktop
 bun test ./scripts/desktop/beads-work-map.test.ts ./scripts/desktop/beads-model.test.ts --timeout 15000
 bun run typecheck
 bun run lint
