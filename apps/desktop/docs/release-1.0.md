@@ -53,6 +53,29 @@ Bead ids above and below use the repository prefix `agent-forge-harness-`.
 [Monitoring-only guidance](monitoring-1.0.md) and the old shell/frame
 demonstration are historical evidence, not the present completion boundary.
 
+## Choosing a Windows test packet
+
+Identify the packet by its desktop commit and tree, engine pin, product version,
+Quality run and the portable or installer manifest hash. Match the engine gitlink
+to `engine.lock.json` and record the ordered merge parents. The harness has six
+Quality jobs and desktop has seven, including the Windows candidate build.
+Use the passing initial checks and the automatic default-branch push run for
+each applicable source change. The desktop run used for release preparation
+must be the successful first attempt on the exact accepted main commit.
+
+Actions uses the commit SHA to distinguish engineering packets. A later packet
+can still say `1.0.0-rc.2` while carrying a different commit, engine or executable
+hash. An existing unpublished draft belongs to its original commit and assets.
+Keep it intact and choose a separately qualified packet by manifest identity.
+See the [Windows distribution procedure](../../../docs/release-distribution.md).
+
+Before attended testing, verify the portable and installer-review archives
+against their server digests. Check the file inventory, setup SHA-256 and
+retained notices and coverage holds. Use the portable executable hash for
+portable testing and installer manifest schema 2’s payload hash when verifying
+the installed executable. Record source qualification, package integrity,
+native runtime behavior, signing and human acceptance separately.
+
 ## Build, package and first launch
 
 The current build target is Windows x64. Building requires Bun 1.4.2, the
@@ -66,14 +89,18 @@ vendor CLIs. These tools and capabilities are separately probed; they are not
 bundled or established by opening the app. A version response alone does not
 prove authentication. macOS is not qualified by these Windows receipts.
 
-From an isolated checkout of the reviewed source:
+From the root of an isolated checkout of the reviewed desktop source, initialize
+the pinned engine and assemble the workspace before installing its dependencies.
 
 ```powershell
-bun install --frozen-lockfile
+git submodule update --init -- engine
+bun run prepare
+bun install --cwd=.work/desktop --frozen-lockfile
 bun run desktop:build
 ```
 
-The build replaces that checkout's `apps/desktop/build/windows-x64` stage.
+The build replaces the portable release folder at
+`.work/desktop/apps/desktop/build/windows-x64`.
 Preserve any earlier frozen candidate before rebuilding. The current command
 produces a portable Release folder, not an installer. Keep its dashboard,
 desktop-host and Hearth sidecars together. Installer delivery and Windows
@@ -94,7 +121,7 @@ budgets remain consumed; this guide authorizes no rebuild or helper replay.
 Open `agent-forge-desktop.exe` to choose a checkout, or supply one explicitly:
 
 ```powershell
-.\apps\desktop\build\windows-x64\agent-forge-desktop.exe --root "C:\path\to\agent-forge-harness"
+.\.work\desktop\apps\desktop\build\windows-x64\agent-forge-desktop.exe --root "C:\path\to\agent-forge-harness"
 ```
 
 The app starts and supervises its own host/Hearth. An invalid explicit root is
@@ -294,10 +321,9 @@ or the feature passed. Do not replay a consumed helper or reset an attempt cap.
 
 ## Packaged and human Windows acceptance
 
-The release record must name source commit, tree, ordered merge parents,
-candidate version, file hashes, Windows/WebView2 versions, all required notices,
-all six exact-head hosted gates and the exact current native receipt.
-Native build success alone is not a smoke/seal result.
+Use the packet identity and hosted evidence described above. Add the
+Windows and WebView2 versions, the exact native receipt, and the status of
+signing, notice and runtime obligations to the release record.
 
 Prepare a private fixture checkout/home with a complete owned source and inert
 provider stand-ins. Preserve earlier candidates and failed diagnostics. A fresh

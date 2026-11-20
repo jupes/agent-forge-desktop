@@ -11,15 +11,15 @@ Use Bun 1.4.2. Clone with submodules:
 ```sh
 git clone --recurse-submodules https://github.com/jupes/agent-forge-desktop.git
 cd agent-forge-desktop
-bun install --frozen-lockfile
 bun run prepare
+bun install --cwd=.work/desktop --frozen-lockfile
 bun run typecheck
 bun run test
 ```
 
 `bun run prepare` assembles an ignored Git build workspace at `.work/desktop`. It copies the pinned engine and overlays the desktop-owned paths from `product.json`, preserving existing relative imports. Edit source in this repository, then prepare again; earlier generated workspaces are archived locally. Edits in a generated workspace are refused rather than discarded.
 
-`bun run desktop:build` produces the Windows portable candidate under `.work/desktop/apps/desktop/build/windows-x64`. Native compilation requires the Rust/MSVC/Windows SDK versions listed in [desktop build documentation](apps/desktop/README.md). `bun run dashboard -- --mode desktop` starts the development renderer.
+`bun run desktop:build` produces the Windows portable candidate under `.work/desktop/apps/desktop/build/windows-x64`. Native compilation requires the Rust/MSVC/Windows SDK versions listed in [desktop build documentation](apps/desktop/README.md). `bun run dashboard --mode desktop` starts the development renderer.
 
 Desktop quality CI runs the complete assembled unit and browser suites, including worktree, Shift and restart journeys. The separate Windows candidate workflow builds the native executable and runs Rust checks. Build identity records both desktop and engine commits.
 
