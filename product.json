@@ -1,6 +1,8 @@
 {
   "schemaVersion": 1,
   "paths": [
+    ".github/actions/pinned-git/action.yml",
+    ".github/actions/pinned-git/build.sh",
     ".github/workflows/desktop-candidate.yml",
     ".github/workflows/quality.yml",
     "apps/desktop/.gitignore",
