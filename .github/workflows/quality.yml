@@ -77,6 +77,10 @@ jobs:
         working-directory: .
         shell: pwsh
         run: ./tools/release-draft.test.ps1
+      - name: Check installer lifecycle rules against inert fixtures
+        working-directory: .
+        shell: pwsh
+        run: ./tools/installer-lifecycle.test.ps1
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test ./scripts ./apps/desktop/src --timeout 15000

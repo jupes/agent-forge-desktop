@@ -104,11 +104,13 @@ Var ForgeFlagsReset
 Var ForgeResetOK
 Var ForgeResult
 
+; The hosted lifecycle check reports only these fixed package stages.
+; Keep aborts nonzero and never return platform errors or child codes.
 !macro ForgePackageInit
   ; The pinned NSIS stub is x86 even when its payload is x64 or ARM64.
   System::Call '*0(p, &l.r0)'
   ${If} $0 != 4
-    SetErrorLevel 1
+    SetErrorLevel 40
     Abort "Unsupported installer pointer layout. No files were changed."
   ${EndIf}
   System::Call 'kernel32::SetLastError(i 0)'
@@ -117,7 +119,7 @@ Var ForgeResult
   StrCpy $ForgeGuard $0
   ${If} $ForgeGuard = 0
   ${OrIf} $1 != 0
-    SetErrorLevel 1
+    SetErrorLevel 41
     Abort "Another Agent Forge package operation is active or unavailable."
   ${EndIf}
   ; Retain this presence handle until process exit, including every failure path.
@@ -142,19 +144,19 @@ Var ForgeResult
   ${If} $3 != 0
   ${OrIf} $1 != ":\"
   ${OrIf} $4 != 3
-    SetErrorLevel 1
+    SetErrorLevel 42
     Abort "The current Windows user's local installation directory is unavailable."
   ${EndIf}
   ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
   ${AndIf} $INSTDIR != $ForgeFixedDir
-    SetErrorLevel 1
+    SetErrorLevel 43
     Abort "Agent Forge must use its fixed current-user installation directory."
   ${EndIf}
   StrCpy $INSTDIR $ForgeFixedDir
   ReadRegStr $4 HKCU "${MANUPRODUCTKEY}" ""
   ${If} $4 != ""
   ${AndIf} $4 != $ForgeFixedDir
-    SetErrorLevel 1
+    SetErrorLevel 43
     Abort "A different Agent Forge installation location is registered. Preserve it."
   ${EndIf}
 !macroend
@@ -164,7 +166,7 @@ Function ${prefix}ForgePreflight
   ; One batch, read-only query. A running app or any uncertainty stops the package.
   System::Call 'rstrtmgr::RmStartSession(*i .r0, i 0, w .r1) i.r2'
   ${If} $2 != 0
-    SetErrorLevel 1
+    SetErrorLevel 46
     Abort "Unable to check running Agent Forge processes. Preserve the installation."
   ${EndIf}
   StrCpy $R0 $0
@@ -195,13 +197,13 @@ Function ${prefix}ForgePreflight
   ${OrIf} $2 != 0
   ${OrIf} $8 != 0
   ${OrIf} $9 != 0
-    SetErrorLevel 1
+    SetErrorLevel 46
     Abort "Close Agent Forge and its owned sessions before changing the installation."
   ${EndIf}
 FunctionEnd
 
 Function ${prefix}ForgeLifecycle
-  StrCpy $ForgeResult 1
+  StrCpy $ForgeResult 49 ; preparing the restricted helper launch
   StrCpy $ForgeNull 0
   StrCpy $ForgeAttributes 0
   StrCpy $ForgeAttributeInitialized 0
@@ -270,7 +272,13 @@ Function ${prefix}ForgeLifecycle
   ${If} $0 != 72
     Goto forge_cleanup
   ${EndIf}
-  System::Call 'kernel32::CreateProcessW(w "$INSTDIR\${MAINBINARYNAME}.exe", w "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" --startup-lifecycle $ForgeVerb", p 0, p 0, i 1, i 0x08080000, p 0, w "$INSTDIR", p $ForgeStartup, p $ForgeProcessInfo) i.r0'
+  StrCpy $ForgeResult 50 ; starting the helper
+  ; Pass strings through registers so System does not parse the command's
+  ; embedded executable quotes as the end of a plug-in string literal.
+  StrCpy $0 "$INSTDIR\${MAINBINARYNAME}.exe"
+  StrCpy $1 '"$0" --startup-lifecycle $ForgeVerb'
+  StrCpy $2 $INSTDIR
+  System::Call 'kernel32::CreateProcessW(w r0, w r1, p 0, p 0, i 1, i 0x08080000, p 0, w r2, p $ForgeStartup, p $ForgeProcessInfo) i.r0'
   StrCpy $ForgeStarted $0
   System::Call 'kernel32::SetHandleInformation(p $ForgeGuard, i 1, i 0) i.r1'
   System::Call 'kernel32::SetHandleInformation(p $ForgeNull, i 1, i 0) i.r2'
@@ -286,13 +294,17 @@ Function ${prefix}ForgeLifecycle
   ${OrIf} $ForgeThread = 0
     Goto forge_cleanup
   ${EndIf}
+  StrCpy $ForgeResult 51 ; waiting for the helper
   System::Call 'kernel32::WaitForSingleObject(p $ForgeProcess, i 30000) i.r0'
   ${If} $0 = 0
+    StrCpy $ForgeResult 52 ; reading or validating the helper result
     System::Call 'kernel32::GetExitCodeProcess(p $ForgeProcess, *i .r1) i.r0'
     ${If} $0 <> 0
     ${AndIf} $1 = 0
-    ${AndIf} $ForgeResetOK <> 0
-      StrCpy $ForgeResult 0
+      StrCpy $ForgeResult 53 ; restoring the parent handles
+      ${If} $ForgeResetOK <> 0
+        StrCpy $ForgeResult 0
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 forge_cleanup:
@@ -319,7 +331,7 @@ forge_cleanup:
   System::Free $ForgeHandleList
   System::Free $ForgeAttributes
   ${If} $ForgeResult != 0
-    SetErrorLevel 1
+    SetErrorLevel $ForgeResult
     Abort "Startup lifecycle was not confirmed. Preserve the installation and original state; do not repeat an unknown operation."
   ${EndIf}
 FunctionEnd
@@ -508,7 +520,7 @@ Function .onInit
   ${If} $R0 == ""
     ${If} $R2 != ""
     ${OrIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
-      SetErrorLevel 1
+      SetErrorLevel 44
       Abort "The installed version is unknown. Preserve the installation."
     ${EndIf}
   ${Else}
@@ -517,14 +529,14 @@ Function .onInit
     nsis_tauri_utils::SemverCompare $R0 invalid
     Pop $R1
     ${If} $R1 != 1
-      SetErrorLevel 1
+      SetErrorLevel 44
       Abort "The installed version is malformed. Preserve the installation."
     ${EndIf}
     nsis_tauri_utils::SemverCompare "${VERSION}" $R0
     Pop $R1
     ${If} $R1 != 0
     ${AndIf} $R1 != 1
-      SetErrorLevel 1
+      SetErrorLevel 44
       Abort "Downgrades or unrecognized installed versions are not supported."
     ${EndIf}
   ${EndIf}
@@ -540,7 +552,7 @@ forge_machine_loop:
   ReadRegStr $R1 HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$1" "Publisher"
   ${If} $R0 == "${PRODUCTNAME}"
   ${AndIf} $R1 == "${MANUFACTURER}"
-    SetErrorLevel 1
+    SetErrorLevel 45
     Abort "A machine-wide installation is registered. Automatic migration is not supported."
   ${EndIf}
   Goto forge_machine_loop
@@ -644,7 +656,7 @@ Section Install
   ClearErrors
   SetOutPath $INSTDIR
   ${If} ${Errors}
-    SetErrorLevel 1
+    SetErrorLevel 47
     Abort "Cannot open the installation directory. Preserve the installation."
   ${EndIf}
 
@@ -670,7 +682,7 @@ Section Install
   {{/each}}
 
   ${If} ${Errors}
-    SetErrorLevel 1
+    SetErrorLevel 48
     Abort "The payload could not be copied completely. Startup activation was not attempted."
   ${EndIf}
   StrCpy $ForgeVerb "activate"

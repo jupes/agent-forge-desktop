@@ -26,6 +26,19 @@ function Get-CommitFile([string]$Sha,[string]$Name) {
   if($LASTEXITCODE -ne 0) { throw 'Selected commit metadata unavailable.' }
   return (($content -join [Environment]::NewLine) | ConvertFrom-Json -AsHashtable)
 }
+function Assert-LifecycleTemplate([string]$Sha,[ValidateSet('current','prior')][string]$Role) {
+  $script:lifecycleCheck="$Role-template-identity"
+  $entry=@(& git ls-tree --full-tree '--format=%(objectmode) %(objecttype) %(objectname)' $Sha -- 'apps/desktop/src-tauri/installer/installer.nsi' 2>$null)
+  if($LASTEXITCODE -ne 0 -or $entry.Count -ne 1 -or $entry[0] -cnotmatch '\A100(?:644|755) blob ([a-f0-9]{40})\z') { throw 'Missing regular installer template.' }
+  $blob=$Matches[1]
+  & git cat-file -e "$blob^{blob}" 2>$null
+  if($LASTEXITCODE -ne 0) { throw 'Installer template blob unavailable.' }
+  # Both affected RCs compiled this template. Its System plug-in quotation faults before the guarded helper starts.
+  if($blob -ceq '657c6760837d9f4e90a08036864fc03092dba5a6') {
+    $script:lifecycleCheck="$Role-template-helper-defect"
+    throw 'Selected package contains the known faulty helper template.'
+  }
+}
 function Select-LifecycleSources {
   $script:lifecyclePhase='quality-selection'
   $head=$env:GITHUB_SHA
@@ -48,6 +61,9 @@ function Select-LifecycleSources {
   & git merge-base --is-ancestor 477d5ceab71a11ec8706338a6971eefd70268d6e $commits[1]
   if($LASTEXITCODE -ne 0) { throw 'Earlier source predates verifiable NSIS payloads.' }
   Assert-LifecycleVersions (Get-CommitFile $commits[1] 'package.json').version (Get-CommitFile $head 'package.json').version
+  Assert-LifecycleTemplate $head 'current'
+  Assert-LifecycleTemplate $commits[1] 'prior'
+  $script:lifecycleCheck='publish-selection'
   "prior_sha=$($commits[1])" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
 }
 function Get-VerifiedManifestFacts($Pairs) {
@@ -126,7 +142,7 @@ function Get-PackageReceipt([string]$Stage,[string]$Role,[string]$Approved) {
   if($installer.installer.path -cne $name -or $installer.installer.sha256 -cne $Approved) { throw 'Changed setup identity.' }
   $path=Join-Path $dir $name
   if((Get-ForgeHash $path) -cne $Approved) { throw 'Setup changed after verification.' }
-  return @{path=$path;setupHash=$Approved;version=$installer.productVersion;main=$installer.mainBinarySha256;files=$pair.portable.files}
+  return @{role=$Role;path=$path;setupHash=$Approved;version=$installer.productVersion;main=$installer.mainBinarySha256;files=$pair.portable.files}
 }
 function Assert-InstalledFiles($Package,[string]$Directory) {
   foreach($file in $Package.files) {
@@ -137,7 +153,36 @@ function Assert-InstalledFiles($Package,[string]$Directory) {
     if((Get-ForgeHash $path) -cne $expected) { throw 'Installed payload mismatch.' }
   }
 }
-function Invoke-GuestPackage([string]$Path) {
+function Wait-GuestPackageExit($Process,$Elapsed,[bool]$CurrentSetup) {
+  $timeoutMs=75000
+  $script:lifecycleCheck='silent-package-drain'
+  $stdout=$Process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
+  $stderr=$Process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
+  $script:lifecycleCheck='silent-package-wait'
+  $remaining=[int][Math]::Max(0,$timeoutMs-$Elapsed.ElapsedMilliseconds)
+  if(!$Process.WaitForExit($remaining)) { throw 'Package outcome unknown; stop and dispose of this runner.' }
+  $script:lifecycleCheck='silent-package-drain'
+  $remaining=[int][Math]::Max(0,$timeoutMs-$Elapsed.ElapsedMilliseconds)
+  if(![Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),$remaining)) { throw 'Package output completion unknown.' }
+  $script:lifecycleCheck='silent-package-exit-status'
+  $code=$Process.ExitCode
+  if($code -isnot [int]) { throw 'Package exit status unknown.' }
+  if($code -eq 0) { return }
+  $script:lifecycleCheck='silent-package-nonzero'
+  if($CurrentSetup) {
+    # Reserved by Forge's NSIS template. Legacy setup and self-copying uninstallers have a separate contract.
+    $checks=@{
+      40='package-pointer-layout'; 41='package-guard'; 42='package-known-folder'; 43='package-install-location'
+      44='package-version'; 45='package-machine-install'; 46='package-running-check'; 47='package-target-directory'
+      48='package-payload-copy'; 49='package-helper-setup'; 50='package-helper-start'; 51='package-helper-wait'
+      52='package-helper-result'; 53='package-handle-reset'
+    }
+    if($checks.ContainsKey($code)) { $script:lifecycleCheck=$checks[$code] }
+  }
+  throw 'Package refused or failed.'
+}
+function Invoke-GuestPackage([string]$Path,[switch]$CurrentSetup) {
+  $script:lifecycleCheck='silent-package-start'
   $start=[Diagnostics.ProcessStartInfo]::new($Path)
   $start.ArgumentList.Add('/S')
   $start.UseShellExecute=$false
@@ -151,16 +196,10 @@ function Invoke-GuestPackage([string]$Path) {
     if($value) { $start.Environment[$key]=$value }
   }
   $start.Environment['PATH'] = Join-Path $env:SystemRoot 'System32'
-  $script:lifecycleCheck='silent-package-process'
   $elapsed=[Diagnostics.Stopwatch]::StartNew()
   $process=[Diagnostics.Process]::Start($start)
   try {
-    $stdout=$process.StandardOutput.BaseStream.CopyToAsync([IO.Stream]::Null)
-    $stderr=$process.StandardError.BaseStream.CopyToAsync([IO.Stream]::Null)
-    if(!$process.WaitForExit(75000)) { throw 'Package outcome unknown; stop and dispose of this runner.' }
-    $remaining=[int][Math]::Max(0,75000-$elapsed.ElapsedMilliseconds)
-    if(![Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),$remaining)) { throw 'Package output completion unknown.' }
-    if($process.ExitCode -ne 0) { throw 'Package refused or failed.' }
+    Wait-GuestPackageExit $process $elapsed $CurrentSetup.IsPresent
   } finally { $process.Dispose() }
 }
 function Get-ActiveGeneration([string]$StateDirectory,[string]$Phase,[string]$ExpectedGeneration,[string]$ExpectedCommand,[string]$ExpectedPrincipal,[string[]]$RequiredRetired) {
@@ -208,7 +247,7 @@ function Assert-PreservedGuest($Guest,$ExpectedRun) {
 }
 function Install-GuestPackage($Package,$Guest,$ExpectedRun) {
   if((Get-ForgeHash $Package.path) -cne $Package.setupHash) { throw 'Selected setup changed before launch.' }
-  Invoke-GuestPackage $Package.path
+  Invoke-GuestPackage $Package.path -CurrentSetup:($Package.role -ceq 'current')
   $script:lifecycleCheck='installed-registration'
   $reg=Get-ItemProperty -LiteralPath $Guest.uninstall
   if($reg.InstallLocation -cne ('"'+$Guest.dir+'"') -or $reg.MainBinaryName -cne 'agent-forge-desktop.exe' -or $reg.DisplayName -cne 'Agent Forge Harness' -or $reg.DisplayVersion -cne $Package.version -or $reg.UninstallString -cne ('"'+$Guest.uninstaller+'"') -or !(Test-Path -LiteralPath $Guest.uninstaller -PathType Leaf)) { throw 'Unexpected installed package registration.' }
