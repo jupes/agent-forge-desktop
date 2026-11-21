@@ -420,6 +420,127 @@ for (const item of sixStartInputs) {
   });
 }
 
+for (const result of [
+  "admitted",
+  "refused",
+  "retargeted",
+  "disposed",
+] as const) {
+  test(`original Start inspection waits for a post-click session list: ${result}`, async () => {
+    const source = await sourceValidOriginal(sixStartInputs[2]!);
+    let scope = { projectId, workspace: "/repo", generation: 1 };
+    let releaseOld!: (value: unknown) => void,
+      releaseNew!: (value: unknown) => void;
+    const oldList = new Promise<unknown>((resolve) => {
+      releaseOld = resolve;
+    });
+    const newList = new Promise<unknown>((resolve) => {
+      releaseNew = resolve;
+    });
+    let nextStarted!: () => void;
+    const freshListStarted = new Promise<void>((resolve) => {
+      nextStarted = resolve;
+    });
+    let lists = 0,
+      protectedReads = 0,
+      writes = 0;
+    const unexpectedWrite = async () => {
+      writes++;
+      throw Error("Inspection must not write");
+    };
+    const client = createSessionsClient({
+      canWrite: () => true,
+      requestId: () => requestId,
+      identityScope: () => {
+        // The protected page arrived and its request hash is about to be
+        // checked asynchronously. The owner can be disposed in that gap.
+        if (result === "disposed" && protectedReads === 1)
+          queueMicrotask(() => client.dispose());
+        return scope;
+      },
+      identityServer: {
+        list: async () => ({
+          version: 1,
+          scope: {
+            family: "owned-session-start",
+            projectId,
+            workspace: "/repo",
+          },
+          identities: [
+            {
+              version: 1,
+              requestId,
+              requestHash: source.requestHash,
+              provider: source.provider,
+              mode: source.mode,
+              state: "admitted",
+            },
+          ],
+        }),
+        reserve: unexpectedWrite,
+        retire: unexpectedWrite,
+      },
+      list: async () => {
+        if (++lists === 1) return oldList;
+        if (lists !== 2) throw Error("Expected one coalesced post-click list");
+        nextStarted();
+        return newList;
+      },
+      read: async (project, sessionId, query) => {
+        protectedReads++;
+        expect(project).toBe(projectId);
+        expect(sessionId).toBe(source.session.id);
+        expect(query).toEqual({ after: 0, requestId });
+        return {
+          ...page,
+          turns: [source.originalTurn],
+          request: source.originalTurn,
+          frames: [{ seq: 1, turnId: requestId, at, event: source.event }],
+        };
+      },
+      post: unexpectedWrite,
+      stream: () => () => ({ close() {} }),
+    });
+    try {
+      await client.refreshIdentities(projectId);
+      const background = client.refresh(projectId);
+      const inspected = client.inspectIdentity(projectId, requestId);
+      const concurrent = client.refresh(projectId);
+      // A pre-click list can omit the newly admitted session, or still contain
+      // a record that the post-click list can no longer verify.
+      releaseOld(result === "admitted" ? [] : [source.session]);
+      await freshListStarted;
+      if (result === "retargeted") {
+        scope = { ...scope, generation: 2 };
+        client.identityScopeChanged();
+      }
+      releaseNew(result === "refused" ? null : [source.session]);
+      await Promise.all([background, concurrent]);
+      expect(await inspected).toBe(result === "admitted");
+      expect(protectedReads).toBe(
+        result === "admitted" || result === "disposed" ? 1 : 0,
+      );
+      expect(lists).toBe(2);
+      expect(writes).toBe(0);
+      const inspection = client.project(projectId).identityInspection;
+      if (result === "retargeted") expect(inspection).toBeNull();
+      else if (result === "disposed") {
+        expect(inspection?.sessionId).toBeNull();
+        expect(client.session(projectId, id).page).toBeNull();
+      } else
+        expect(inspection).toEqual({
+          requestId,
+          state: result === "admitted" ? "verified" : "unavailable",
+          sessionId: result === "admitted" ? id : null,
+        });
+    } finally {
+      releaseOld([]);
+      releaseNew([]);
+      client.dispose();
+    }
+  });
+}
+
 test("original Start inspection uses the request-correlated receipt outside the recent-turn window", async () => {
   const item = sixStartInputs[0]!,
     source = await sourceValidOriginal(item),

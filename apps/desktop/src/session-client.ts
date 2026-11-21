@@ -222,7 +222,11 @@ export function createSessionsClient(deps: {
   const projects = new Map<string, SessionProjectView>(),
     sessions = new Map<string, OwnedSessionView>(),
     listeners = new Set<() => void>();
-  const reads = new Map<string, { work: Promise<void>; again: boolean }>();
+  type SessionListRead = {
+    queued?: Promise<void>;
+    settleQueued?: (next?: Promise<void>) => void;
+  };
+  const reads = new Map<string, SessionListRead>();
   const identityReads = new Map<
     string,
     {
@@ -822,6 +826,7 @@ export function createSessionsClient(deps: {
         (row) => row.requestId === requestId,
       );
       return (
+        !disposed &&
         inspectionEpochs.get(projectId) === inspectionEpoch &&
         isCurrentIdentityScope(scope) &&
         entry.identityGeneration === scope.generation &&
@@ -1153,16 +1158,20 @@ export function createSessionsClient(deps: {
   const refresh = (projectId: string): Promise<void> => {
     const running = reads.get(projectId);
     if (running) {
-      running.again = true;
-      return running.work;
+      // All callers arriving during this list share the next read. Its result
+      // can include an admission that happened after the running read began.
+      running.queued ??= new Promise<void>((resolve) => {
+        running.settleQueued = resolve;
+      });
+      return running.queued;
     }
-    const entry = project(projectId),
-      read = { work: Promise.resolve(), again: false };
+    const entry = project(projectId);
+    const read: SessionListRead = {};
     reads.set(projectId, read);
     if (!deps.identityServer) hydrateStart(projectId, entry);
     entry.loading = true;
     tell();
-    read.work = (async () => {
+    return (async () => {
       try {
         const parsed = listSchema.safeParse(await deps.list(projectId));
         if (disposed) return;
@@ -1235,12 +1244,15 @@ export function createSessionsClient(deps: {
             "Sessions could not be verified. The last confirmed list and original Start request have been kept.";
       } finally {
         reads.delete(projectId);
-        entry.loading = false;
-        tell();
-        if (read.again && !disposed) void refresh(projectId);
+        if (read.settleQueued && !disposed) {
+          read.settleQueued(refresh(projectId));
+        } else {
+          entry.loading = false;
+          read.settleQueued?.();
+          tell();
+        }
       }
     })();
-    return read.work;
   };
   const postStart = async (projectId: string, retry: boolean) => {
     const entry = project(projectId),

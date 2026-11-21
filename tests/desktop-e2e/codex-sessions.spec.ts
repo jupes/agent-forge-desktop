@@ -1394,8 +1394,19 @@ test("reload keeps a pre-admission Start identity held until its original protec
   let identityWrites = 0;
   let startPosts = 0;
   let protectedOriginalReads = 0;
+  const inventoryPath = `/__agent-forge/projects/${alpha.id}/sessions`;
+  let inspectedRequestId: string | null = null;
+  const inspectionReads = { inventoryRequested: false, originalRequested: false };
   page.on("request", (request) => {
     const url = new URL(request.url());
+    if (inspectedRequestId !== null && request.method() === "GET") {
+      if (url.pathname === inventoryPath) inspectionReads.inventoryRequested = true;
+      if (
+        url.pathname.slice(0, url.pathname.lastIndexOf("/")) === inventoryPath &&
+        url.searchParams.get("requestId") === inspectedRequestId
+      )
+        inspectionReads.originalRequested = true;
+    }
     if (
       request.method() === "POST" &&
       url.pathname.includes("/session-start-identities")
@@ -1546,12 +1557,44 @@ test("reload keeps a pre-admission Start identity held until its original protec
   expect(identityWrites).toBe(1);
   expect(startPosts).toBe(1);
   expect(protectedOriginalReads).toBe(0);
+  inspectedRequestId = heldOriginal.requestId;
   await admittedRow
     .getByRole("button", { name: "Inspect original", exact: true })
     .click();
-  await expect(
-    admittedRow.getByRole("link", { name: "Open original session" }),
-  ).toBeVisible();
+  const originalLink = admittedRow.getByRole("link", {
+    name: "Open original session",
+  });
+  try {
+    await expect(originalLink).toBeVisible();
+  } catch (error) {
+    // An inventory request during Inspect may also come from the application stream.
+    const readsAtFailure = { ...inspectionReads };
+    const state = await Promise.all([
+      admittedRow.getByText("Verifying original…", { exact: true }).isVisible(),
+      admittedRow
+        .getByText("Original unavailable; identity remains held.", {
+          exact: true,
+        })
+        .isVisible(),
+      originalLink.isVisible(),
+    ]).then(
+      ([loading, unavailable, verified]) => {
+        if (verified) return "verified";
+        if (unavailable) return "unavailable";
+        return loading ? "loading" : "absent";
+      },
+      () => "unobserved",
+    );
+    try {
+      console.info(
+        "original-start-inspection",
+        JSON.stringify({ ...readsAtFailure, state }),
+      );
+    } catch {
+      // Diagnostic output must preserve the original assertion failure.
+    }
+    throw error;
+  }
   await expect.poll(() => protectedOriginalReads).toBeGreaterThan(0);
   await admittedRow
     .getByRole("link", { name: "Open original session" })
