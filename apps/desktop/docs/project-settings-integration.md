@@ -25,8 +25,9 @@ The original full-scope milestone count stays 11/14 (79%); it is not a completio
 percentage for this reduced release. Beads task cla5.7.9.15 tracks this cut.
 
 For the later 1.0 bug bash, check saved Scope has no edit/authorize controls,
-Activity/Inbox still work, no OS permission/delivery occurs, explicit close can
-be canceled or confirmed, and relaunch recovers after host failure. General Save,
+Activity/Inbox still work, and no OS permission or delivery occurs. Close the main
+window once and verify that the app and its owned host exit without a confirmation
+dialog. After a host failure, verify that an explicit relaunch recovers. General Save,
 creation replay, stale Save refusal and the existing safety gates still need
 human coverage. No GUI, browser, process or native experiment was run locally
 for this cut; static, isolated fixtures and compile checks have narrower meaning.
