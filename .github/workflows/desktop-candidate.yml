@@ -144,6 +144,10 @@ jobs:
       - name: Compile unsigned installer review candidate without launching it
         timeout-minutes: 8
         run: bun scripts/desktop/installer-candidate.ts
+      - name: Verify both installer helper commands with an inert child
+        working-directory: .
+        timeout-minutes: 2
+        run: ./tools/test-installer-helper-command.ps1 -NsisRoot (Join-Path $env:LOCALAPPDATA 'tauri/NSIS')
       - name: Upload installer review candidate
         id: installer
         uses: actions/upload-artifact@v4

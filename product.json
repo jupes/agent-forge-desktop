@@ -797,6 +797,7 @@
     "tests/desktop-worktree-e2e/teardown.ts",
     "tests/desktop-worktree-e2e/vite.config.ts",
     "tools/run.ts",
+    "tools/test-installer-helper-command.ps1",
     "tools/workspace.ts",
     "tsconfig.tools.json",
     "scripts/desktop/installer-candidate.ts",
