@@ -18,7 +18,12 @@ preserves the installation.
 Only the exact startup command owned by the retiring generation may be removed.
 Foreign, malformed and unreadable Run values remain unchanged. The package
 keeps profile data, startup receipts and unknown or retired state. Obsolete
-payload files can remain after an in-place update.
+payload files can remain after an in-place update. In particular, if you
+installed corrected RC2 directly, upgraded to a candidate with a renamed
+dashboard file, and then uninstalled that candidate, expect the old
+`dashboard/assets/index-iTXU0aPJ.js` to remain. The
+[installer review guide](manual-installer-candidate.md#ordinary-upgrade-from-corrected-rc2)
+explains why the file is preserved and when a witnessed upgrade is available.
 
 A timeout, abnormal helper exit, unresolved earlier operation or failed durable
 verification stops deletion. Matching registry state alone does not establish
