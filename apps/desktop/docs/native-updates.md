@@ -15,11 +15,16 @@ Every check, download and installation first requires a confirmed protected
 operator.action audit and an exact scope-bound private authorization ticket.
 Only three fixed ticket filenames are retained, one per operation.
 
-The fixed channel is:
-https://github.com/jupes/agent-forge-desktop/releases/latest/download/latest.json
-It must supply a stable numeric SemVer and a windows-x86_64-nsis platform entry.
-The package URL must name this repository, that exact vVERSION release and an
-x64 NSIS setup executable. HTTPS redirects are limited to this repository's
+The updater reads <https://github.com/jupes/agent-forge-desktop/releases/latest/download/latest.json>.
+Set `version` to a stable SemVer without a prerelease or build suffix. Under
+`platforms.windows-x86_64-nsis`, set `url` to the installer in this repository’s
+`v{version}` release and `signature` to the Tauri signature for those exact bytes.
+The asset filename must end in `_x64-setup.exe`. For example, a hypothetical
+`1.0.0` manifest could use `https://github.com/jupes/agent-forge-desktop/releases/download/v1.0.0/Forge_1.0.0_x64-setup.exe`.
+The unsigned engineering packet uses `Agent-Forge-Harness-{version}-windows-x64-setup.exe`.
+Its hyphen before `x64` makes that filename ineligible for the signed update channel.
+
+HTTPS redirects are limited to this repository's
 release paths and GitHub's release-assets host. Ambient proxies are disabled;
 TLS uses the Windows trust store. Metadata is capped at64KiB/10seconds and the
 package at256MiB/120seconds, including streaming reads. No package is executed
