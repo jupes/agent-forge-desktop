@@ -3,8 +3,15 @@
 The candidate workflow also compiles a separate unsigned NSIS review packet
 from the already-built binaries. It adds the staged legal files and inventories
 through a resources-only bundle overlay. It never launches the installer or app.
-See [the installer review guide](manual-installer-candidate.md). Signing,
-installer/runtime and human acceptance remain open until separately observed.
+The ordinary corrected RC2 to RC3 upgrade retained one old dashboard file and
+its two containing directories after uninstall. The release owner accepted
+retaining that unwitnessed file. Fresh RC4 uninstall and a witnessed corrected
+RC2 to RC4 upgrade followed by uninstall both removed the installation folder
+and registration on a disposable Windows guest. See the
+[ordinary upgrade result](https://github.com/jupes/agent-forge-desktop/actions/runs/44960135830/job/137016903206),
+[RC4 guest result](https://github.com/jupes/agent-forge-desktop/actions/runs/44977668671/job/137071083267)
+and [installer review guide](manual-installer-candidate.md). Signing, runtime
+redistribution and human acceptance remain open.
 
 The desktop source now lives in `jupes/agent-forge-desktop`, with an immutable
 engine pin recorded in `engine.lock.json`. Harness PR507 and desktop PRs2–4 are

@@ -21,6 +21,12 @@ payload obligations and human acceptance remain open. The included inventories
 retain their explicit coverage holds. Compilation alone does not establish
 installation, startup, retirement or uninstall behavior.
 
+## Ordinary upgrade from corrected RC2
+
+If you installed corrected RC2 directly and then upgraded in place to a candidate that ships the dashboard under a new filename, the old file stays in the installation. Uninstalling the successor also leaves `dashboard/assets/index-iTXU0aPJ.js` in place. The `dashboard/assets` and `dashboard` directories can therefore remain under the installation folder.
+
+This is expected for ordinary RC2 installations. The RC2 package manifest records the file’s size and SHA-256. An ordinary install records no identity for the original installed file. Even an exact byte match could belong to a replacement. The installer preserves the file, including modified, replaced or linked copies. An existing installation cannot acquire a witness retroactively.
+
 ## Witnessed upgrade from corrected RC2
 
 The RC4 portable package includes an optional PowerShell tool for a clean, current-user installation of corrected RC2 followed by an upgrade to RC4. Keep the same 64-bit PowerShell 7.4 or later process open for both commands. Use an unused Agent Forge install location on a local NTFS volume. Obtain the two setup executables from their separately verified engineering packages. For RC4, use the reviewed setup SHA-256 and the installed main executable SHA-256 from its installer manifest.
@@ -38,7 +44,7 @@ try {
 }
 ```
 
-The tool creates the original RC2 dashboard file and keeps its Windows file handle while both installers run. After RC4 activates in the same generation, the tool verifies the original object and its contents before removing it. A replacement, changed bytes, an extra stream or link, a lost session or an unconfirmed activation leaves cleanup pending. A directly installed or previously existing RC2 has no live witness. Its obsolete dashboard file stays in place. Use the ordinary registered uninstaller for RC4 after the upgrade.
+The tool creates the original RC2 dashboard file and keeps its Windows file handle while both installers run. After RC4 activates in the same generation, the tool verifies the original object and its contents before removing it. A replacement, changed bytes, an extra stream or link, a lost session or an unconfirmed activation leaves cleanup pending. Use the ordinary registered uninstaller for RC4 after the upgrade.
 
 ## Attended Windows checks
 
