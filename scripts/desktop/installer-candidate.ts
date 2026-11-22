@@ -9,6 +9,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import {
+  nsisNoticePath,
+  nsisNotices,
+  verifyNsisNoticePayloads,
+} from "../distribution/nsis-notices";
 import { isMain } from "../is-main";
 
 export interface InstallerResource {
@@ -161,9 +166,18 @@ export function planInstallerResources(
     }
   };
   walk(stage);
+  for (const notice of nsisNotices) {
+    const file = files.find((row) => row.path === nsisNoticePath(notice));
+    if (file?.bytes !== notice.bytes || file.sha256 !== notice.sha256)
+      throw Error(`Missing or altered NSIS notice: ${notice.name}`);
+  }
   if (
     required.some((path) => !files.some((file) => file.path === path)) ||
-    !files.some((file) => file.path.startsWith("legal/"))
+    !files.some(
+      (file) =>
+        file.path.startsWith("legal/") &&
+        !nsisNotices.some((notice) => nsisNoticePath(notice) === file.path),
+    )
   )
     throw Error("Missing required installer notices");
   return { resources, files };
@@ -266,12 +280,15 @@ function readInstallerMember(
   installer: string,
   path: string,
   maxBuffer: number,
+  matchCase = false,
 ) {
-  return execFileSync(
-    "7z",
-    ["e", "-so", "-bd", "-bso0", "-bse1", "-bsp0", installer, path],
-    { timeout: 15_000, maxBuffer, windowsHide: true },
-  );
+  const options = ["e", "-so", "-bd", "-bso0", "-bse1", "-bsp0"];
+  if (matchCase) options.push("-ssc");
+  return execFileSync("7z", [...options, installer, path], {
+    timeout: 15_000,
+    maxBuffer,
+    windowsHide: true,
+  });
 }
 
 async function main(): Promise<void> {
@@ -384,6 +401,9 @@ async function main(): Promise<void> {
   );
   verifyWitnessPayloads(plan.files, source.files, (path) =>
     readInstallerMember(installer, path, maxToolBytes),
+  );
+  verifyNsisNoticePayloads((path, limit) =>
+    readInstallerMember(installer, path, limit, true),
   );
   const mainIdentity = installerMainBinaryIdentity(portableMain, packagedMain);
   verifyResourceSnapshot(

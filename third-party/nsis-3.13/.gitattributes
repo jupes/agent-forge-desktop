@@ -1,0 +1,4 @@
+# Keep upstream CRLF, encoding and whitespace verbatim while allowing text review.
+COPYING -text -whitespace
+Docs/NSISdl/License.txt -text -whitespace
+"Docs/Modern UI 2/License.txt" -text -whitespace
