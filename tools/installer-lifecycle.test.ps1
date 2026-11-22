@@ -240,6 +240,30 @@ try {
       }
     } finally { Pop-Location; $env:GITHUB_OUTPUT,$env:GITHUB_STEP_SUMMARY,$env:CURRENT_SETUP_SHA256=$prev }
   }
+  # Load only the two measured files from the installed candidate. Use inert module bytes.
+  & {
+    $candidate=Join-Path $dir 'witness-installed'
+    $tools=Join-Path $candidate 'installer-tools'
+    $stage=Join-Path $dir 'witness-stage'
+    $null=New-Item -ItemType Directory -Path $tools,$stage
+    $psFile=Join-Path $tools 'WitnessedRc2Upgrade.psm1'
+    $source=Join-Path $tools 'Rc2ResourceWitness.cs'
+    [IO.File]::WriteAllText($psFile,"function Get-FixtureWitness { 'verified' }; Export-ModuleMember -Function Get-FixtureWitness")
+    [IO.File]::WriteAllText($source,'/* fixture */')
+    $files=@(foreach($f in @($psFile,$source)) {
+      @{path=('installer-tools/'+[IO.Path]::GetFileName($f));bytes=(Get-Item $f).Length;sha256=(Get-ForgeHash $f)}
+    })
+    $packet=@{files=$files}; $installation=@{dir=$candidate}
+    $module=Import-GuestWitnessTools $packet $installation $stage
+    try {
+      if((& $module.ExportedCommands['Get-FixtureWitness']) -cne 'verified') { throw 'Wrong measured module.' }
+      Assert-Fails { Import-GuestWitnessTools $packet $installation $stage }
+    } finally { Remove-Module $module }
+    $bad=Join-Path $dir 'witness-altered-stage'
+    $null=New-Item -ItemType Directory -Path $bad
+    [IO.File]::WriteAllText($source,'/* changed */')
+    Assert-Fails { Import-GuestWitnessTools $packet $installation $bad }
+  }
   $path=Join-Path $dir 'agent-forge-desktop.exe'
   [IO.File]::WriteAllText($path,'inert file for hashing only')
   $hash=Get-ForgeHash $path
