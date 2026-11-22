@@ -18,6 +18,13 @@ export interface InstallerResource {
   sha256: string;
 }
 
+export const witnessToolPaths = [
+  "installer-tools/WitnessedRc2Upgrade.psm1",
+  "installer-tools/Rc2ResourceWitness.cs",
+] as const;
+const priorDashboardAsset = "dashboard/assets/index-iTXU0aPJ.js";
+const maxToolBytes = 128 * 1024;
+
 const required = [
   "LICENSE",
   "NOTICE",
@@ -28,6 +35,7 @@ const required = [
   "COMPILED-DEPENDENCY-INVENTORY.json",
   ".claude/skills/ATTRIBUTION.md",
   "docs/fonts/LICENSE-Inter.txt",
+  ...witnessToolPaths,
 ];
 const excluded = new Set([
   "agent-forge-desktop.exe",
@@ -113,6 +121,14 @@ export function planInstallerResources(
   const resources: Record<string, string> = {
     "../../../docs/dist/": "dashboard/",
   };
+  const reserved = priorDashboardAsset.slice("dashboard/".length);
+  for (const path of [
+    join(stage, priorDashboardAsset),
+    resolve(backend, "../../../docs/dist", reserved),
+  ]) {
+    if (lstatSync(path, { throwIfNoEntry: false }))
+      throw Error("Incoming dashboard overlaps the witnessed RC2 asset");
+  }
   const files: InstallerResource[] = [];
   const names = new Set<string>();
   let count = 0,
@@ -218,6 +234,46 @@ export function assertHostedInstallerBuild(
     throw Error("Installer compilation is restricted to hosted Windows x64 CI");
 }
 
+export function verifyWitnessPayloads(
+  resources: InstallerResource[],
+  sourceFiles: unknown,
+  readMember: (path: string) => Buffer,
+): void {
+  if (!Array.isArray(sourceFiles)) throw Error("Missing desktop source files");
+  for (const path of witnessToolPaths) {
+    const staged = resources.find((row) => row.path === path);
+    const owned = sourceFiles.filter(
+      (row) => object(row).path === `apps/desktop/${path}`,
+    );
+    if (
+      !staged ||
+      staged.bytes < 1 ||
+      staged.bytes > maxToolBytes ||
+      owned.length !== 1 ||
+      object(owned[0]).sha256 !== staged.sha256
+    )
+      throw Error("Witness tool differs from assembled source");
+    const packed = readMember(path);
+    if (
+      packed.length !== staged.bytes ||
+      createHash("sha256").update(packed).digest("hex") !== staged.sha256
+    )
+      throw Error("Witness tool differs in the NSIS payload");
+  }
+}
+
+function readInstallerMember(
+  installer: string,
+  path: string,
+  maxBuffer: number,
+) {
+  return execFileSync(
+    "7z",
+    ["e", "-so", "-bd", "-bso0", "-bse1", "-bsp0", installer, path],
+    { timeout: 15_000, maxBuffer, windowsHide: true },
+  );
+}
+
 async function main(): Promise<void> {
   assertHostedInstallerBuild(
     process.env.GITHUB_ACTIONS,
@@ -321,19 +377,13 @@ async function main(): Promise<void> {
     throw Error("Invalid portable executable input");
   const portableMain = readFileSync(portableMainPath);
   // Read the actual payload without executing it. Refuse extraction or byte drift.
-  const packagedMain = execFileSync(
-    "7z",
-    [
-      "e",
-      "-so",
-      "-bd",
-      "-bso0",
-      "-bse1",
-      "-bsp0",
-      installer,
-      "agent-forge-desktop.exe",
-    ],
-    { timeout: 15_000, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+  const packagedMain = readInstallerMember(
+    installer,
+    "agent-forge-desktop.exe",
+    64 * 1024 * 1024,
+  );
+  verifyWitnessPayloads(plan.files, source.files, (path) =>
+    readInstallerMember(installer, path, maxToolBytes),
   );
   const mainIdentity = installerMainBinaryIdentity(portableMain, packagedMain);
   verifyResourceSnapshot(

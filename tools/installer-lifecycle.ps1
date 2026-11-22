@@ -248,6 +248,9 @@ function Assert-PreservedGuest($Guest,$ExpectedRun) {
 function Install-GuestPackage($Package,$Guest,$ExpectedRun) {
   if((Get-ForgeHash $Package.path) -cne $Package.setupHash) { throw 'Selected setup changed before launch.' }
   Invoke-GuestPackage $Package.path -CurrentSetup:($Package.role -ceq 'current')
+  Assert-GuestInstallation $Package $Guest $ExpectedRun
+}
+function Assert-GuestInstallation($Package,$Guest,$ExpectedRun) {
   $script:lifecycleCheck='installed-registration'
   $reg=Get-ItemProperty -LiteralPath $Guest.uninstall
   if($reg.InstallLocation -cne ('"'+$Guest.dir+'"') -or $reg.MainBinaryName -cne 'agent-forge-desktop.exe' -or $reg.DisplayName -cne 'Agent Forge Harness' -or $reg.DisplayVersion -cne $Package.version -or $reg.UninstallString -cne ('"'+$Guest.uninstaller+'"') -or !(Test-Path -LiteralPath $Guest.uninstaller -PathType Leaf)) { throw 'Unexpected installed package registration.' }
@@ -344,6 +347,22 @@ function Uninstall-GuestPackage($Guest,[string]$ExpectedGeneration,$ExpectedRun,
   }
   ($script:lifecyclePhase+' complete removal passed.') | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 }
+function Import-GuestWitnessTools($Current,$Guest,[string]$Stage) {
+  $tools=Join-Path $Stage 'witness-tools'
+  if(Test-Path -LiteralPath $tools) { throw 'Existing witness tools stage.' }
+  $null=New-Item -ItemType Directory -Path $tools
+  foreach($name in @('WitnessedRc2Upgrade.psm1','Rc2ResourceWitness.cs')) {
+    $rows=@($Current.files | Where-Object { $_.path -ceq ('installer-tools/'+$name) })
+    if($rows.Count -ne 1 -or $rows[0].bytes -lt 1 -or $rows[0].bytes -gt 131072 -or
+       $rows[0].sha256 -cnotmatch '\A[a-f0-9]{64}\z') { throw 'Missing verified witness tool.' }
+    $src=Join-Path $Guest.dir $rows[0].path
+    $out=Join-Path $tools $name
+    if((Get-Item -LiteralPath $src).Length -ne $rows[0].bytes) { throw 'Installed witness tool size differs.' }
+    [IO.File]::Copy($src,$out,$false)
+    if((Get-ForgeHash $out) -cne $rows[0].sha256) { throw 'Installed witness tool differs from the verified package.' }
+  }
+  return Import-Module -Name (Join-Path $tools 'WitnessedRc2Upgrade.psm1') -PassThru -NoClobber -ErrorAction Stop
+}
 function Test-GuestLifecycle([string]$Stage) {
   $script:lifecyclePhase='verified-receipts'
   if($env:VERIFIED_PRIOR_SETUP_SHA256 -cnotmatch '^[a-f0-9]{64}$' -or $env:VERIFIED_PRIOR_SETUP_SHA256 -ceq $env:CURRENT_SETUP_SHA256) { throw 'Missing or duplicate verified prior setup.' }
@@ -372,18 +391,40 @@ function Test-GuestLifecycle([string]$Stage) {
   Write-Output 'Checking current fresh installation and retirement.'
   $script:lifecyclePhase='current-fresh'
   $first=Install-GuestPackage $current $guest
+  $witnessed=$prior.version -ceq '1.0.0-rc.2' -and $current.version -ceq '1.0.0-rc.4'
+  if($witnessed) {
+    $script:lifecycleCheck='installed-witness-tools'
+    $module=Import-GuestWitnessTools $current $guest $Stage
+  }
   $script:lifecyclePhase='current-fresh-uninstall'
   Add-GuestRunFixture $guest $guest.ownedCommand
   Uninstall-GuestPackage $guest $first $null $current $null
   Write-Output 'Checking the approved prior installation and upgrade.'
   $script:lifecyclePhase='prior-fresh'
-  $before=Install-GuestPackage $prior $guest
-  if($first -ceq $before) { throw 'Reinstallation reused a retired generation.' }
-  $script:lifecyclePhase='upgrade'
-  $foreignRun='inert-foreign-command-'+[guid]::NewGuid().ToString('N')
-  Add-GuestRunFixture $guest $foreignRun
-  $after=Install-GuestPackage $current $guest $foreignRun
-  if($before -cne $after) { throw 'Upgrade changed active startup generation.' }
+  $session=$null
+  try {
+    if($witnessed) {
+      $script:lifecycleCheck='witnessed-predecessor-install'
+      $session=& $module.ExportedCommands['Start-ForgeWitnessedRc2Install'] -SetupPath $prior.path
+      $before=Assert-GuestInstallation $prior $guest $null
+    } else { $before=Install-GuestPackage $prior $guest }
+    if($first -ceq $before) { throw 'Reinstallation reused a retired generation.' }
+    $script:lifecyclePhase='upgrade'
+    $foreignRun='inert-foreign-command-'+[guid]::NewGuid().ToString('N')
+    Add-GuestRunFixture $guest $foreignRun
+    if($witnessed) {
+      $script:lifecycleCheck='witnessed-successor-upgrade'
+      & $module.ExportedCommands['Complete-ForgeWitnessedRc2Upgrade'] -Session $session -SetupPath $current.path -SetupSha256 $current.setupHash -InstalledMainSha256 $current.main
+      $after=Assert-GuestInstallation $current $guest $foreignRun
+      if(Test-Path -LiteralPath (Join-Path $guest.dir 'dashboard/assets/index-iTXU0aPJ.js')) { throw 'Witnessed predecessor file remains.' }
+    } else { $after=Install-GuestPackage $current $guest $foreignRun }
+    if($before -cne $after) { throw 'Upgrade changed active startup generation.' }
+    if($witnessed) {
+      $confirmation='Witnessed RC2 cleanup: confirmed.'
+      Write-Host $confirmation
+      $confirmation | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+    }
+  } finally { if($null -ne $session) { $session.Dispose() } }
   $script:lifecyclePhase='upgrade-uninstall'
   Uninstall-GuestPackage $guest $after $foreignRun $current $prior @($first)
   'Verified NSIS current fresh install, prior-to-current upgrade, uninstall, generation retirement, exact owned Run removal, foreign Run preservation, and synthetic profile preservation.' | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
@@ -406,6 +447,11 @@ if($lifecycleMode -ne 'Library') {
     }
   } catch {
     # Candidate bytes, user state and platform error strings never enter the log.
+    $stageCode=$_.Exception.Data['ForgeWitnessStage']
+    if($script:lifecycleCheck -cin @('witnessed-predecessor-install','witnessed-successor-upgrade') -and
+       $stageCode -cin @('native-source','prior-setup-identity','initial-state','original-file','prior-setup','prior-activation','prior-content','prior-recheck','successor-identity','successor-setup','successor-activation','resource-retirement')) {
+      $script:lifecycleCheck='witness-'+$stageCode
+    }
     Write-Output ("Installer lifecycle stopped during {0}, phase {1}, check {2} ({3})." -f $lifecycleMode,$script:lifecyclePhase,$script:lifecycleCheck,$_.Exception.GetType().Name)
     exit 1
   }

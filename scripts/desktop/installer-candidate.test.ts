@@ -14,6 +14,8 @@ import {
   installerMainBinaryIdentity,
   planInstallerResources,
   verifyResourceSnapshot,
+  verifyWitnessPayloads,
+  witnessToolPaths,
 } from "./installer-candidate";
 
 const roots: string[] = [];
@@ -59,8 +61,8 @@ afterEach(() => {
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "forge-installer-plan-"));
   roots.push(root);
-  const stage = join(root, "app/build/windows-x64");
-  const backend = join(root, "app/src-tauri");
+  const stage = join(root, "apps/desktop/build/windows-x64");
+  const backend = join(root, "apps/desktop/src-tauri");
   mkdirSync(stage, { recursive: true });
   mkdirSync(backend, { recursive: true });
   for (const path of [
@@ -74,6 +76,7 @@ function fixture() {
     ".claude/skills/ATTRIBUTION.md",
     "docs/fonts/LICENSE-Inter.txt",
     "legal/cargo/example/LICENSE",
+    ...witnessToolPaths,
     "dashboard/index.html",
     "agent-forge-desktop.exe",
     "desktop-host.exe",
@@ -95,7 +98,7 @@ test("installer resource overlay includes staged original notices and retains da
   expect(
     plan.resources["../build/windows-x64/legal/cargo/example/LICENSE"],
   ).toBe("legal/cargo/example/LICENSE");
-  expect(plan.files).toHaveLength(10);
+  expect(plan.files).toHaveLength(12);
   expect(plan.files.find((file) => file.path === "LICENSE")).toMatchObject({
     bytes: 20,
     sha256: createHash("sha256").update("exact fixture bytes\n").digest("hex"),
@@ -120,6 +123,51 @@ test("unknown files, missing mandatory notices and a different input root refuse
   expect(() => planInstallerResources(join(root, "other"), backend)).toThrow(
     "Unexpected installer input stage",
   );
+});
+
+test("both witnessed tools must match the source and actual NSIS payload", () => {
+  const { stage, backend } = fixture();
+  const files = planInstallerResources(stage, backend).files;
+  const bytes = Buffer.from("exact fixture bytes\n");
+  const owned = witnessToolPaths.map((path) => ({
+    path: `apps/desktop/${path}`,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  }));
+  const read: string[] = [];
+  verifyWitnessPayloads(files, owned, (path) => {
+    read.push(path);
+    return bytes;
+  });
+  expect(read).toEqual([...witnessToolPaths]);
+  for (const path of witnessToolPaths) {
+    const remaining = owned.filter(
+      (row) => row.path !== `apps/desktop/${path}`,
+    );
+    expect(() => verifyWitnessPayloads(files, remaining, () => bytes)).toThrow(
+      "source",
+    );
+    expect(() =>
+      verifyWitnessPayloads(files, owned, (member) =>
+        member === path ? Buffer.alloc(bytes.length) : bytes,
+      ),
+    ).toThrow("NSIS payload");
+    rmSync(join(stage, path));
+    expect(() => planInstallerResources(stage, backend)).toThrow(
+      "Missing required",
+    );
+    writeFileSync(join(stage, path), bytes);
+  }
+});
+
+test("the corrected RC2 leaf is reserved in the portable and compiler dashboards", () => {
+  const { root, stage, backend } = fixture();
+  for (const directory of [join(stage, "dashboard"), join(root, "docs/dist")]) {
+    const leaf = join(directory, "assets/index-iTXU0aPJ.js");
+    mkdirSync(dirname(leaf), { recursive: true });
+    writeFileSync(leaf, "incoming fixture");
+    expect(() => planInstallerResources(stage, backend)).toThrow("overlaps");
+    rmSync(leaf);
+  }
 });
 
 test.skipIf(process.platform === "win32")(

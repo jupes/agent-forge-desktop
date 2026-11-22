@@ -21,6 +21,25 @@ payload obligations and human acceptance remain open. The included inventories
 retain their explicit coverage holds. Compilation alone does not establish
 installation, startup, retirement or uninstall behavior.
 
+## Witnessed upgrade from corrected RC2
+
+The RC4 portable package includes an optional PowerShell tool for a clean, current-user installation of corrected RC2 followed by an upgrade to RC4. Keep the same 64-bit PowerShell 7.4 or later process open for both commands. Use an unused Agent Forge install location on a local NTFS volume. Obtain the two setup executables from their separately verified engineering packages. For RC4, use the reviewed setup SHA-256 and the installed main executable SHA-256 from its installer manifest.
+
+From the extracted RC4 portable directory, run:
+
+```powershell
+Import-Module ./installer-tools/WitnessedRc2Upgrade.psm1
+$session = Start-ForgeWitnessedRc2Install -SetupPath $correctedRc2Setup
+try {
+    Complete-ForgeWitnessedRc2Upgrade -Session $session -SetupPath $rc4Setup `
+        -SetupSha256 $reviewedSetupSha256 -InstalledMainSha256 $reviewedMainSha256
+} finally {
+    $session.Dispose()
+}
+```
+
+The tool creates the original RC2 dashboard file and keeps its Windows file handle while both installers run. After RC4 activates in the same generation, the tool verifies the original object and its contents before removing it. A replacement, changed bytes, an extra stream or link, a lost session or an unconfirmed activation leaves cleanup pending. A directly installed or previously existing RC2 has no live witness. Its obsolete dashboard file stays in place. Use the ordinary registered uninstaller for RC4 after the upgrade.
+
 ## Attended Windows checks
 
 Wait until the operator permits foreground work. Keep the previous candidate,

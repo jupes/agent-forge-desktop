@@ -81,6 +81,14 @@ jobs:
         working-directory: .
         shell: pwsh
         run: ./tools/installer-lifecycle.test.ps1
+      - name: Check witnessed RC2 identity and upgrade policy on NTFS fixtures
+        working-directory: .
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -NonInteractive -File ./tools/rc2-resource-witness.test.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Native witness fixture failure." }
+          ./tools/witnessed-rc2-upgrade.test.ps1
+          Write-Output 'Passed witnessed RC2 native identity and upgrade policy checks.'
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test ./scripts ./apps/desktop/src --timeout 15000

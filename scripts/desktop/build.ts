@@ -8,6 +8,7 @@ import {
 } from "../distribution/notices";
 import { writeRuntimeDistributionNotices } from "../distribution/runtime-notices";
 import { isMain } from "../is-main";
+import { witnessToolPaths } from "./installer-candidate";
 
 const root = resolve(import.meta.dir, "../..");
 const app = join(root, "apps", "desktop");
@@ -99,6 +100,9 @@ async function main(): Promise<void> {
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
   writeDistributionNotices(stage, notices);
+  mkdirSync(join(stage, "installer-tools"));
+  for (const path of witnessToolPaths)
+    copyFileSync(join(app, path), join(stage, path));
   copyFileSync(exe, join(stage, "agent-forge-desktop.exe"));
   cpSync(join(root, "docs", "dist"), join(stage, "dashboard"), {
     recursive: true,

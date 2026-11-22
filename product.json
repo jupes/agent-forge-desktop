@@ -798,6 +798,8 @@
     "tests/desktop-worktree-e2e/vite.config.ts",
     "tools/run.ts",
     "tools/test-installer-helper-command.ps1",
+    "apps/desktop/installer-tools/WitnessedRc2Upgrade.psm1",
+    "apps/desktop/installer-tools/Rc2ResourceWitness.cs",
     "tools/workspace.ts",
     "tsconfig.tools.json",
     "scripts/desktop/installer-candidate.ts",
