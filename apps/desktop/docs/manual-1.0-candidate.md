@@ -20,11 +20,13 @@ Windows and human results remain separate:
 | Settings integrations | Source includes reviewed Claude/Codex/Cursor registration and original-outcome recovery; actual client/profile and activation checks remain |
 | Deep links | Project, bead and session cold/warm native activation and recovery |
 | Session pop-outs | Source integrated; current packaged child/parent close, IPC and cross-window qualification remain open |
-| Native updates and installer | Source includes explicit signed check/download/review/install and durable attempt recovery; publisher setup, actual installer and Windows acceptance remain |
+| Native updates and installer | Publisher and update-channel setup, a signed update, Settings changes in the installed app, and an actual Windows logon still need acceptance. |
 | Full Light appearance and keyboard use | Whole-app and minimum-window acceptance |
 | Five workflows below | Current candidate end-to-end and human verification |
 
 All nine Inbox classes and the checkpoint Council return are integrated in this candidate source. Read the exact source commit's hosted checks before treating it as qualified. Earlier failed installer, helper and native runs remain failed.
+
+The [RC4 Windows guest](https://github.com/jupes/agent-forge-desktop/actions/runs/44977668671/job/137071083267) verified fresh install and uninstall, and a witnessed upgrade from corrected RC2 followed by uninstall. An ordinary corrected RC2 install preserves its old dashboard file after an in-place upgrade to a renamed dashboard and subsequent uninstall. These results apply to the packages identified in the guest records.
 
 The established 1.1 cuts are foreign-workspace Source authorization and Scope editing, OS notifications and tray keep-alive, provider expansion and in-app permission decisions. Saved Scope and permission status remain read-only in 1.0. These cuts do not defer the remaining rows above.
 

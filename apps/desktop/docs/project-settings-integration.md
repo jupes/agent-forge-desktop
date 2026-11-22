@@ -24,7 +24,9 @@ holds, the separate compiled-attended failure and manual acceptance remain open.
 The original full-scope milestone count stays 11/14 (79%); it is not a completion
 percentage for this reduced release. Beads task cla5.7.9.15 tracks this cut.
 
-For the later 1.0 bug bash, check saved Scope has no edit/authorize controls,
+### Foreground acceptance checks
+
+For the 1.0 bug bash, check saved Scope has no edit/authorize controls,
 Activity/Inbox still work, and no OS permission or delivery occurs. Close the main
 window once and verify that the app and its owned host exit without a confirmation
 dialog. After a host failure, verify that an explicit relaunch recovers. General Save,
@@ -69,10 +71,12 @@ The separate actual compiled-native Source/attended failure remains recorded;
 its native experiment/helper was not edited or rerun. New hosted suites may
 finish after merge under the user's standing authorization; no all-green claim.
 
-## Later manual bug bash
+## Deferred 1.1 Settings walkthrough
 
-Use isolated fixture projects for the later manual session. This guide does not
-reset or authorize historical native probe attempts.
+Use the [foreground acceptance checks](#foreground-acceptance-checks)
+for the current release. The walkthrough below covers the deferred Scope editor,
+foreign Source authorization, notifications and tray behavior. Use isolated
+fixture projects when those features return for 1.1 testing.
 
 1. Check all Settings sections for a created and a pre-existing project. Change
    General and Scope, reload, and confirm current values plus immutable creation
