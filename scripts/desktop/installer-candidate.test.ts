@@ -1,14 +1,21 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import {
+  readNsisNotices,
+  verifyNsisNoticePayloads,
+  writeNsisNotices,
+} from "../distribution/nsis-notices";
 import {
   assertHostedInstallerBuild,
   installerMainBinaryIdentity,
@@ -19,6 +26,12 @@ import {
 } from "./installer-candidate";
 
 const roots: string[] = [];
+const noticeSource = resolve(import.meta.dir, "../../third-party/nsis-3.13");
+const nsisOriginals = [
+  "COPYING",
+  "Docs/NSISdl/License.txt",
+  "Docs/Modern UI 2/License.txt",
+] as const;
 
 test("installer identity records the packaged NSIS bytes separately from the portable executable", () => {
   const portable = Buffer.from("MZ fixture\0__TAURI_BUNDLE_TYPE_VAR_UNK\0end");
@@ -87,6 +100,7 @@ function fixture() {
     mkdirSync(dirname(join(stage, path)), { recursive: true });
     writeFileSync(join(stage, path), "exact fixture bytes\n");
   }
+  writeNsisNotices(stage, readNsisNotices(resolve(import.meta.dir, "../..")));
   return { root, stage, backend };
 }
 
@@ -98,7 +112,7 @@ test("installer resource overlay includes staged original notices and retains da
   expect(
     plan.resources["../build/windows-x64/legal/cargo/example/LICENSE"],
   ).toBe("legal/cargo/example/LICENSE");
-  expect(plan.files).toHaveLength(12);
+  expect(plan.files).toHaveLength(15);
   expect(plan.files.find((file) => file.path === "LICENSE")).toMatchObject({
     bytes: 20,
     sha256: createHash("sha256").update("exact fixture bytes\n").digest("hex"),
@@ -107,6 +121,69 @@ test("installer resource overlay includes staged original notices and retains da
   expect(Object.values(plan.resources)).not.toContain(
     "agent-forge-desktop.exe",
   );
+});
+
+test("the installer rejects a missing or altered NSIS original at every fixed path", () => {
+  const { stage, backend } = fixture();
+  for (const name of nsisOriginals) {
+    const target = join(stage, "legal/nsis/3.13", name);
+    rmSync(target);
+    expect(() => planInstallerResources(stage, backend)).toThrow("NSIS notice");
+    const bytes = readFileSync(join(noticeSource, name));
+    bytes[0] = bytes[0]! ^ 1;
+    writeFileSync(target, bytes);
+    expect(() => planInstallerResources(stage, backend)).toThrow("NSIS notice");
+    copyFileSync(join(noticeSource, name), target);
+  }
+  rmSync(join(stage, "legal/cargo/example/LICENSE"));
+  expect(() => planInstallerResources(stage, backend)).toThrow(
+    "Missing required",
+  );
+});
+
+test("compiler originals reach the portable stage and each bounded installer member unchanged", () => {
+  const { root, stage, backend } = fixture();
+  const members = planInstallerResources(stage, backend).files;
+  const paths: string[] = [];
+  verifyNsisNoticePayloads((path, limit) => {
+    paths.push(path);
+    const bytes = readFileSync(join(stage, path));
+    expect(bytes.length).toBe(limit);
+    expect(members.find((file) => file.path === path)).toMatchObject({
+      bytes: limit,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
+    return bytes;
+  });
+  expect(paths).toEqual(nsisOriginals.map((name) => `legal/nsis/3.13/${name}`));
+  for (const name of nsisOriginals) {
+    const original = readFileSync(join(noticeSource, name));
+    expect(readFileSync(join(stage, "legal/nsis/3.13", name))).toEqual(
+      original,
+    );
+    const path = join(root, "third-party/nsis-3.13", name);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, original);
+  }
+  for (const name of nsisOriginals) {
+    const path = join(root, "third-party/nsis-3.13", name);
+    const original = readFileSync(path);
+    rmSync(path);
+    expect(() => readNsisNotices(root)).toThrow();
+    const altered = Buffer.from(original);
+    altered[0] = altered[0]! ^ 1;
+    writeFileSync(path, altered);
+    expect(() => readNsisNotices(root)).toThrow("NSIS notice");
+    writeFileSync(path, original);
+    const target = `legal/nsis/3.13/${name}`;
+    for (const invalid of [altered, Buffer.alloc(0)]) {
+      expect(() =>
+        verifyNsisNoticePayloads((member) =>
+          member === target ? invalid : readFileSync(join(stage, member)),
+        ),
+      ).toThrow("NSIS notice");
+    }
+  }
 });
 
 test("unknown files, missing mandatory notices and a different input root refuse", () => {

@@ -6,6 +6,10 @@ import {
   readDistributionNotices,
   writeDistributionNotices,
 } from "../distribution/notices";
+import {
+  readNsisNotices,
+  writeNsisNotices,
+} from "../distribution/nsis-notices";
 import { writeRuntimeDistributionNotices } from "../distribution/runtime-notices";
 import { isMain } from "../is-main";
 import { witnessToolPaths } from "./installer-candidate";
@@ -56,6 +60,7 @@ async function main(): Promise<void> {
   assertWindowsX64();
   assertSafeStage();
   const notices = await readDistributionNotices(root);
+  const nsisNotices = readNsisNotices(root);
   mkdirSync(sidecars, { recursive: true });
   const env = { ...process.env, DASHBOARD_NO_BUILD: "1" };
   await run(
@@ -100,6 +105,7 @@ async function main(): Promise<void> {
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
   writeDistributionNotices(stage, notices);
+  writeNsisNotices(stage, nsisNotices);
   mkdirSync(join(stage, "installer-tools"));
   for (const path of witnessToolPaths)
     copyFileSync(join(app, path), join(stage, path));

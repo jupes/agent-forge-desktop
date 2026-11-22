@@ -61,6 +61,48 @@ test("an empty saved project creates its first child and Check opens the record 
   expect(createCalls()).toHaveLength(before + 1);
 });
 
+test("Enter on the create dialog's Check link reveals the new bead in a populated project", async ({
+  page,
+}) => {
+  await openSettled(page, `/index.html#/desktop/project/${alpha.id}/beads`);
+  const before = createCalls().length;
+  const title = "Verify keyboard navigation to a created bead";
+  await page.getByRole("button", { name: "New bead", exact: true }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "New bead · Alpha",
+    exact: true,
+  });
+  await dialog.getByLabel("Title", { exact: true }).fill(title);
+  await dialog
+    .getByRole("combobox", { name: "Parent epic", exact: true })
+    .selectOption("alpha-epic");
+  await dialog.getByRole("button", { name: "Create bead", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("Done");
+  const created = Object.values(readState(BD_STAND_IN_STATE)).find(
+    (item) => item.title === title,
+  );
+  if (!created) throw Error("Missing created fixture bead");
+  const check = dialog.getByRole("link", {
+    name: `Check ${created.id}`,
+    exact: true,
+  });
+  await check.focus();
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  const record = page
+    .getByRole("main")
+    .getByRole("region", { name: `Bead ${created.id}`, exact: true });
+  await expect(record).toContainText(title);
+  await expect(
+    page.getByRole("region", { name: "Current bead write", exact: true }),
+  ).toContainText("Done");
+  await reloadSettled(page);
+  await expect(record).toContainText(title);
+  await expect(dialog).toHaveCount(0);
+  expect(createCalls()).toHaveLength(before + 1);
+});
+
 test("New bead title and description stay separate across delayed options focus", async ({
   page,
 }) => {

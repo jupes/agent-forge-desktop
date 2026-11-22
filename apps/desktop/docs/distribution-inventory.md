@@ -41,6 +41,17 @@ by hosted staging. Selected pinned [Bun originals](runtime-notices.md) are also
 staged for review. Complete runtime/source/relink and installer/NSIS obligations
 remain open. None of these layers certifies full release notices.
 
+The desktop build stages three original files from the Tauri-distributed NSIS
+3.13 compiler archive under `legal/nsis/3.13/`. The root `COPYING` includes the
+LZMA module terms and linking exception. `Docs/NSISdl/License.txt` and
+`Docs/Modern UI 2/License.txt` preserve the download plug-in and installer
+interface notices. The build checks their exact byte lengths and SHA-256
+digests before and after staging. The installer job also checks the resource
+plan and reads those three members from the finished setup. Their pinned
+digests and archive identity are in the [NSIS notice manifest](../../../scripts/distribution/nsis-notices.ts).
+The separate `nsis_tauri_utils` plug-in, the complete installer component and
+source mapping, and redistribution approval still require review.
+
 Focused fixtures cover dependency selection, mismatches, unsafe paths, missing
 coverage, Unicode names, exact byte propagation, real cache layout, gzip bounds,
 foreign archive roots and sparse-member refusal. An additional inert data check
