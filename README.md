@@ -2,7 +2,16 @@
 
 The desktop product for exploring Beads and dependencies, managing projects, and working with agent sessions and runs. This repository owns the desktop UI, Windows native shell, desktop tests, and app distribution.
 
-The cloneable [Forge Harness](https://github.com/jupes/agent-forge-harness) remains the headless engine and agent-workflow product. Desktop consumes an exact engine commit recorded by `engine.lock.json` and the `engine` submodule; it does not keep a second engine implementation.
+To use the Windows app, open a valid Agent Forge Harness checkout in the workspace chooser. The harness also runs on its own as a CLI and browser dashboard. Desktop pins its engine revision in `engine.lock.json` and the `engine` submodule. [Get the harness](https://github.com/jupes/agent-forge-harness#get-started)
+
+![Agent Forge Desktop’s Projects view with two example projects, their pinned status, and controls for opening a project or asking Keeper.](apps/desktop/docs/screenshots/projects-home.png)
+
+<details>
+<summary>See how a project tracks dependencies</summary>
+
+![The Beads Dependencies tab shows that the selected task is blocked by another task that is in progress.](apps/desktop/docs/screenshots/beads-detail.png)
+
+</details>
 
 ## Development
 
@@ -25,9 +34,11 @@ Desktop quality CI runs the complete assembled unit and browser suites, includin
 
 ## Versions and downloads
 
-App versions and downloadable installers belong to [this repository’s Releases](https://github.com/jupes/agent-forge-desktop/releases). CI artifacts remain temporary engineering candidates. See [Windows release distribution](docs/release-distribution.md) for the workflow that prepares a verified, unpublished engineering draft with checksums and source evidence. There is no published stable 1.0 installer yet. Signing/channel provisioning, installer qualification and the remaining manual acceptance requirements stay open.
+There is no published stable 1.0 installer yet. Published downloads belong on the Releases page. Windows CI produces temporary engineering candidates with checksums and source evidence. [Releases](https://github.com/jupes/agent-forge-desktop/releases) · [Windows release distribution](docs/release-distribution.md)
 
-The current app still opens a valid harness checkout. This source split does not change workspace selection, existing projects, Beads membership, provider configuration or user data. Supporting ordinary repositories without a harness checkout is a separate product change.
+The unpublished RC4 built from `dac04ed3` passed fresh installation and a witnessed upgrade from corrected RC2 on Windows. Both paths verified the three NSIS notices and ended with a clean uninstall. The upgrade test recorded file identity when RC2 was installed. An ordinary RC2 installation without that record preserves the superseded dashboard file. [Installer lifecycle run](https://github.com/jupes/agent-forge-desktop/actions/runs/45079743947)
+
+Installed Settings and launch after an actual Windows sign-in remain unverified. Stable 1.0 also awaits human workflow and accessibility checks, publisher signing, signed update-channel testing and redistribution review. [Candidate walkthrough](apps/desktop/docs/manual-1.0-candidate.md)
 
 ## Migration and history
 
