@@ -4,6 +4,15 @@ The desktop product for exploring Beads and dependencies, managing projects, and
 
 To use the Windows app, open a valid Agent Forge Harness checkout in the workspace chooser. The harness also runs on its own as a CLI and browser dashboard. Desktop pins its engine revision in `engine.lock.json` and the `engine` submodule. [Get the harness](https://github.com/jupes/agent-forge-harness#get-started)
 
+![Agent Forge Desktop’s Projects view with two example projects, their pinned status, and controls for opening a project or asking Keeper.](apps/desktop/docs/screenshots/projects-home.png)
+
+<details>
+<summary>See how a project tracks dependencies</summary>
+
+![The Beads Dependencies tab shows that the selected task is blocked by another task that is in progress.](apps/desktop/docs/screenshots/beads-detail.png)
+
+</details>
+
 ## Development
 
 Use Bun 1.4.2. Clone with submodules:
