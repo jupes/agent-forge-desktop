@@ -22,6 +22,7 @@ import type { ConversationFrame } from "../../types/conversation";
 import { conversationFile } from "../conversations/paths";
 import { eventSchema } from "../conversations/protocol";
 import { createConversationStore } from "../conversations/store";
+import { SupervisorOwnershipRefusalError } from "../executors/supervisor";
 import { resolveCheckout } from "../ledger/workspace";
 import { workspaceKey } from "../projects/scope";
 import { createProjectStore } from "../projects/store";
@@ -2331,6 +2332,40 @@ test.each([
 
 test("actual native MCP snapshots remain private and exact across whole/partial reads, export, recreation and original retry", async () => {
   const f = await fixture("mcp-tool-calls");
+  const observer = createDeadlineObserver();
+  const run = f.runtime.run.bind(f.runtime);
+  let writeFailure: { event: string; renameStatus: number | null } | null =
+    null;
+  let ownershipRefused = false;
+  f.runtime.run = (input, persist, signal, callbacks) =>
+    observer.observeRuntime(() => {
+      const work = run(
+        input,
+        (event) => {
+          const pending = observer.tapPersist(event, persist);
+          void pending.catch((error: unknown) => {
+            const cause = error instanceof Error ? error.cause : undefined;
+            const status =
+              cause instanceof Error
+                ? /^Windows refused to rename \(error (\d{1,10})(?:,|\))/.exec(
+                    cause.message,
+                  )?.[1]
+                : undefined;
+            writeFailure ??= {
+              event: event.kind,
+              renameStatus: status === undefined ? null : Number(status),
+            };
+          });
+          return pending;
+        },
+        signal,
+        callbacks,
+      );
+      void work.catch((error: unknown) => {
+        ownershipRefused = error instanceof SupervisorOwnershipRefusalError;
+      });
+      return work;
+    });
   let service = f.open();
   const start = await service.start(f.project.id, f.request),
     sessionId = start.session.id;
@@ -2343,7 +2378,24 @@ test("actual native MCP snapshots remain private and exact across whole/partial 
     clipped = reports.find(
       (report) => report.itemId === "reported-mcp-clipped",
     );
-  expect(page.turns[0]?.phase).toBe("completed");
+  if (page.turns[0]?.phase !== "completed") {
+    const { runtime, terminalPersist, reopened } = projectCodexDeadlineFacts({
+      observer: observer.snapshot(),
+      page,
+      originalRequestId: f.request.requestId,
+    });
+    throw new Error(
+      `The native MCP snapshot turn did not complete (${JSON.stringify({
+        phase: reopened.genericPhase,
+        code: reopened.genericCode,
+        snapshots: Math.min(reports.length, 16),
+        runtime,
+        terminalPersist,
+        writeFailure,
+        ownershipRefused,
+      })})`,
+    );
+  }
   expect(reports).toHaveLength(9);
   expect(
     main.map((report) => [report.source, report.status, report.closure]),
