@@ -102,6 +102,7 @@ import {
 } from "./navigation";
 import { ObservedSessionDetail } from "./ObservedSessionDetail";
 import { OwnedSessions } from "./OwnedSessions";
+import { PortfolioWorkMap } from "./PortfolioWorkMap";
 import {
   ProjectActivityFeed,
   ProjectActivityInspector,
@@ -184,6 +185,7 @@ import { useProjectRepositories } from "./use-project-repositories";
 import { useProjectRuns } from "./use-project-runs";
 import { useProjectShifts } from "./use-project-shifts";
 import { useProjectValueSettings } from "./use-project-value-settings";
+import { useProjectWorkMap } from "./use-project-work-map";
 import { useProjectWorktreeCleanup } from "./use-project-worktree-cleanup";
 import { useProjects } from "./use-projects";
 import { useProviders } from "./use-providers";
@@ -449,6 +451,7 @@ function DesktopContent({
     (recovery?.connection.writesAllowed ?? false) && sessionWindowCurrent;
   const appearance = useAppAppearance(connectionWritable);
   const projects = useProjects();
+  const workMap = useProjectWorkMap(route.destination === "work-map");
   const projectGeneralSettings = useProjectGeneralSettings(
     projects.refreshProjectHome,
   );
@@ -3958,7 +3961,9 @@ function DesktopContent({
             ? "Restarting"
             : (recovery?.connection.label ?? "Connecting")
         }
-        inspectorOpen={fullBead ? false : inspectorOpen}
+        inspectorOpen={
+          !fullBead && route.destination !== "work-map" && inspectorOpen
+        }
         inspector={
           (route.destination === "activity" || activitySelection !== null) &&
           project &&
@@ -4159,6 +4164,23 @@ function DesktopContent({
           <EmptyState
             title="This session window address changed"
             hint="Return to the main Forge window and open the intended session explicitly. No session was started."
+          />
+        ) : route.destination === "work-map" ? (
+          <PortfolioWorkMap
+            data={workMap.data}
+            error={workMap.error}
+            loading={workMap.loading}
+            onRefresh={workMap.reload}
+            onOpenProject={(projectId) => {
+              window.location.hash = desktopHref({
+                destination: "overview",
+                projectId,
+                selection: null,
+              });
+            }}
+            onOpenBead={(projectId, beadId) => {
+              window.location.hash = beadHref(projectId, beadId, true);
+            }}
           />
         ) : route.destination === "projects" ? (
           <ProjectsHome

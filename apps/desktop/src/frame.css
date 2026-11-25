@@ -334,3 +334,11 @@
     padding-inline-start: calc(8px + var(--session-depth, 0) * 12px);
   }
 }
+
+.af-desktop-frame[data-destination="work-map"] .af-desktop-layout {
+  grid-template-columns: var(--desktop-rail) minmax(0, 1fr);
+}
+.af-desktop-frame[data-destination="work-map"] .af-desktop-sidebar,
+.af-desktop-frame[data-destination="work-map"] .af-desktop-content-header {
+  display: none;
+}

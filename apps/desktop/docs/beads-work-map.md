@@ -1,5 +1,20 @@
 # Beads work map
 
+Choose **Work Map** in Desktop's global navigation for the portfolio view. It
+opens with **You** connected to every saved project. Each project's epic
+clusters show progress, and a cluster opens to reveal its beads without taking
+you away from the rest of the portfolio. Use search or the list to reach a bead
+directly. The inspector shows recorded delivery outcomes and links to existing
+project and bead views.
+
+The portfolio reads the projects served by the connected Hearth. A project
+whose source cannot be read stays visible with its availability state. Tracker
+progress and currently observed sessions are separate. A completed-bead count
+comes from tracker status, and delivery summaries require a recorded outcome.
+The map does not change the project catalog, tracker, or session state.
+
+## Project view
+
 Open a project, choose **Beads**, then **Tree** or **Dependency graph** beside
 the existing List presentation. Status tabs and search/type/priority/queue/epic
 filters apply to every presentation; switching presentation preserves them.
