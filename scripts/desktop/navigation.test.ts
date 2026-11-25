@@ -72,7 +72,7 @@ test("Work Map opens the portfolio without inheriting an individual bead or proj
   const previous = desktopRoute(
     "#/desktop/project/p-1/beads?selectionKind=bead&selectionId=forge-1",
   );
-  const portfolio = {
+  const portfolio: DesktopRoute = {
     destination: "work-map",
     projectId: null,
     selection: null,
