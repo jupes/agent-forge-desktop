@@ -134,9 +134,24 @@ test("the protected Work Map starts at the portfolio and follows epic delivery a
       "selectionId",
     ),
   ).toBe("map-runtime");
+  const beadPage = page.getByRole("region", { name: "Bead map-runtime" });
+  await expect(
+    beadPage.getByRole("heading", {
+      name: "Map runtime metadata",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    beadPage.getByRole("tabpanel", { name: "Details for map-runtime" }),
+  ).toBeVisible();
 
   await openSettled(page, "/index.html#/desktop/work-map");
   await expect(you).toBeVisible();
+  await release.press("Enter");
+  await expect(release).toHaveAttribute("aria-expanded", "true");
+  await expect(installer).toBeVisible();
+  await you.press("Enter");
   await expect(release).toHaveAttribute("aria-expanded", "false");
   await expect(packaging).toHaveAttribute("aria-expanded", "false");
+  await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
 });
