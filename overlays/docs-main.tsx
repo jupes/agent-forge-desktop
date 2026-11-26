@@ -1,9 +1,18 @@
 import { render } from "preact";
-import { installDesktopConnection } from "../../apps/desktop/src/ConnectionBanner";
-import { DesktopApp } from "../../apps/desktop/src/DesktopApp";
-import { DashboardApp } from "./app";
 
-const desktop = import.meta.env?.MODE === "desktop";
-if (desktop) installDesktopConnection();
-const root = document.getElementById("app");
-if (root) render(desktop ? <DesktopApp /> : <DashboardApp />, root);
+async function mount() {
+  const root = document.getElementById("app");
+  if (import.meta.env?.MODE === "desktop") {
+    const [{ DesktopApp }, { installDesktopConnection }] = await Promise.all([
+      import("../../apps/desktop/src/DesktopApp"),
+      import("../../apps/desktop/src/ConnectionBanner"),
+    ]);
+    installDesktopConnection();
+    if (root) render(<DesktopApp />, root);
+  } else if (root) {
+    const { DashboardApp } = await import("./app");
+    render(<DashboardApp />, root);
+  }
+}
+
+void mount();
