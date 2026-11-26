@@ -913,9 +913,41 @@ test("a Gemini Start held before admission retains its original metadata through
     expect(await identityRow.locator("code").nth(1).textContent()).toBe(
       listedRequestHash,
     );
-    await identityRow
-      .getByRole("button", { name: "Inspect original", exact: true })
-      .click();
+    const inspect = identityRow.getByRole("button", {
+      name: "Inspect original",
+      exact: true,
+    });
+    // A project refresh can disable this control between Playwright's actionability
+    // check and mouseup. Retry only undelivered clicks, never an accepted inspection.
+    const inspectClick = await page.evaluateHandle((requestId) => {
+      const receipt = { delivered: false };
+      function observe(event: MouseEvent) {
+        const button =
+          event.target instanceof Element
+            ? event.target.closest("button")
+            : null;
+        if (
+          !event.isTrusted ||
+          button?.textContent?.trim() !== "Inspect original" ||
+          button.closest("li")?.querySelector("code")?.textContent !== requestId
+        )
+          return;
+        receipt.delivered = true;
+        document.removeEventListener("click", observe, true);
+      }
+      document.addEventListener("click", observe, true);
+      return receipt;
+    }, heldOriginal.requestId);
+    try {
+      await expect
+        .poll(async () => {
+          await inspect.click();
+          return inspectClick.evaluate((receipt) => receipt.delivered);
+        })
+        .toBe(true);
+    } finally {
+      await inspectClick.dispose();
+    }
     await expect(
       identityRow.getByRole("link", { name: "Open original session" }),
     ).toBeVisible();
