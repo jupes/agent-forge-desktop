@@ -160,6 +160,79 @@ test("a horizontal live branch leaves visible edges between project and epic car
   }
 });
 
+test("Fit places two epic chains above and below You on a portrait map and retains their edges", () => {
+  const model = buildPortfolioMap({
+    ...snapshot,
+    projects: snapshot.projects.filter(({ id }) => id !== "paused"),
+    epics: snapshot.epics.filter(({ parentId }) => parentId === null),
+    beads: [
+      bead("live", "Forge the release", "desktop", "desktop-root", "working"),
+    ],
+    dependencies: [],
+  });
+  const wide = buildPortfolioGraph(model, new Map(), OWNER_NODE, {
+    width: 900,
+    height: 600,
+  });
+  const viewport = { width: 330, height: 630 };
+  const tall = buildPortfolioGraph(model, new Map(), OWNER_NODE, viewport);
+  const positions = new Map(tall.nodes.map((item) => [item.node.key, item]));
+  const epics = tall.nodes.filter(({ node }) => node.kind === "epic");
+  expect(epics).toHaveLength(2);
+  expect(wide.width).toBeGreaterThan(wide.height);
+  expect(tall.edges).toEqual(wide.edges);
+  expect(positions.get(OWNER_NODE)).toMatchObject({
+    x: tall.width / 2,
+    y: tall.height / 2,
+  });
+  const fit = Math.min(
+    viewport.width / tall.width,
+    viewport.height / tall.height,
+    1,
+  );
+  expect(14 * fit).toBeGreaterThanOrEqual(11);
+  const epicOffsets = epics.map(({ y }) => y - tall.height / 2);
+  expect(Math.min(...epicOffsets) * fit).toBeLessThan(-viewport.height / 5);
+  expect(Math.max(...epicOffsets) * fit).toBeGreaterThan(viewport.height / 5);
+  for (const item of tall.nodes) {
+    expect(item.x).toBeCloseTo(tall.width / 2);
+    expect(item.y - item.height / 2).toBeGreaterThanOrEqual(0);
+    expect(item.y + item.height / 2).toBeLessThanOrEqual(tall.height);
+    if (item.node.parentKey) {
+      const parent = positions.get(item.node.parentKey);
+      if (!parent) throw Error(`Missing parent for ${item.node.key}`);
+      const gap =
+        Math.abs(item.y - parent.y) - (item.height + parent.height) / 2;
+      expect(gap).toBeGreaterThanOrEqual(12);
+    }
+  }
+});
+
+test("an empty portfolio keeps You centered at either viewport orientation", () => {
+  const model = buildPortfolioMap({
+    ...snapshot,
+    projects: [],
+    epics: [],
+    beads: [],
+    dependencies: [],
+  });
+  for (const viewport of [
+    { width: 330, height: 630 },
+    { width: 900, height: 600 },
+  ]) {
+    const graph = buildPortfolioGraph(model, new Map(), OWNER_NODE, viewport);
+    expect(graph.nodes).toHaveLength(1);
+    expect(graph.nodes[0]).toMatchObject({
+      node: { key: OWNER_NODE },
+      x: graph.width / 2,
+      y: graph.height / 2,
+    });
+    expect(graph.width).toBeGreaterThan(0);
+    expect(graph.height).toBeGreaterThan(0);
+    expect(graph.edges).toEqual([]);
+  }
+});
+
 test("opening a nested epic admits its beads and keeps other project branches connected", () => {
   const model = buildPortfolioMap(snapshot);
   const selected = beadNodeKey("desktop", "desktop-issue");

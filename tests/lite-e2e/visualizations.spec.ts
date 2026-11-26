@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import type { ProjectOverview } from "../../types/project-overview";
 import type { ProjectWorkMap } from "../../types/project-work-map";
 
@@ -148,6 +148,57 @@ async function installReader(
 
 const screenshots = ".tmp/screenshots/forge-lite";
 
+function fitGeometry(graph: Locator) {
+  return graph.evaluate((viewport) => {
+    const view = viewport.getBoundingClientRect();
+    const nodes = [
+      ...viewport.querySelectorAll<HTMLButtonElement>("button[data-kind]"),
+    ];
+    const bounds = (node: HTMLElement) => node.getBoundingClientRect();
+    const owner = nodes.find((node) => node.dataset.kind === "owner");
+    if (!owner) throw Error("Missing owner in the rendered graph");
+    const you = bounds(owner);
+    const labels = nodes.filter((node) =>
+      ["project", "epic"].includes(node.dataset.kind ?? ""),
+    );
+    const fontSizes = labels.map((node) => {
+      const label = node.querySelector("strong");
+      if (!label) throw Error("Missing project or epic title");
+      // A CSS transform on the plot scales the type after layout.
+      const scale = bounds(node).width / node.offsetWidth;
+      return Number.parseFloat(getComputedStyle(label).fontSize) * scale;
+    });
+    const epicY = nodes
+      .filter((node) => node.dataset.kind === "epic")
+      .map((node) => {
+        const rect = bounds(node);
+        return rect.top + rect.height / 2;
+      });
+    return {
+      labelCount: labels.length,
+      smallestTitle: Math.min(...fontSizes),
+      epicSpan: (Math.max(...epicY) - Math.min(...epicY)) / view.height,
+      centerError: Math.max(
+        Math.abs(
+          you.left + you.width / 2 - view.left - viewport.clientWidth / 2,
+        ),
+        Math.abs(
+          you.top + you.height / 2 - view.top - viewport.clientHeight / 2,
+        ),
+      ),
+      allVisible: nodes.every((node) => {
+        const box = bounds(node);
+        return (
+          box.left >= view.left - 1 &&
+          box.right <= view.right + 1 &&
+          box.top >= view.top - 1 &&
+          box.bottom <= view.bottom + 1
+        );
+      }),
+    };
+  });
+}
+
 test("opens the portfolio, follows project work and compares projects without issuing mutations", async ({
   page,
 }, info) => {
@@ -180,6 +231,32 @@ test("opens the portfolio, follows project work and compares projects without is
     page.getByRole("button", { name: "Back to center" }),
   ).toBeVisible();
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  if (info.project.name === "narrow") {
+    await expect(async () => {
+      const geometry = await fitGeometry(graph);
+      expect(geometry.labelCount).toBe(4);
+      expect(geometry.smallestTitle).toBeGreaterThanOrEqual(11);
+      expect(geometry.epicSpan).toBeGreaterThan(0.4);
+      expect(geometry.centerError).toBeLessThan(3);
+      expect(geometry.allVisible).toBe(true);
+    }).toPass({ timeout: 5000 });
+    console.log("[lite:narrow-fit]", await fitGeometry(graph));
+    await graph.scrollIntoViewIfNeeded();
+    const box = (await graph.boundingBox())!;
+    await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.45);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.38, {
+      steps: 4,
+    });
+    await page.mouse.up();
+    await expect
+      .poll(async () => (await fitGeometry(graph)).centerError)
+      .toBeGreaterThan(10);
+    await page.getByRole("button", { name: "Back to center" }).click();
+    await expect
+      .poll(async () => (await fitGeometry(graph)).centerError)
+      .toBeLessThan(3);
+  }
   await expect
     .poll(() =>
       page.evaluate(

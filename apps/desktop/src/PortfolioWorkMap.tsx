@@ -112,10 +112,6 @@ function PortfolioView({
   const model = useMemo(() => buildPortfolioMap(data), [data]);
   const owner = model.nodes.get(OWNER_NODE);
   const selected = model.nodes.get(selectedKey) ?? owner;
-  const graph = useMemo(
-    () => buildPortfolioGraph(model, expanded, selected?.key ?? OWNER_NODE),
-    [model, expanded, selected],
-  );
   const matches = useMemo(
     () => filterPortfolioBeads(model, query, filter),
     [model, query, filter],
@@ -337,7 +333,7 @@ function PortfolioView({
             <div class="af-portfolio-content">
               {view === "graph" ? (
                 <PortfolioCanvas
-                  graph={graph}
+                  model={model}
                   snapshot={data}
                   stale={Boolean(error)}
                   selected={selected}
@@ -859,7 +855,7 @@ function viewportCenter(
 }
 
 function PortfolioCanvas({
-  graph,
+  model,
   snapshot,
   stale,
   selected,
@@ -868,7 +864,7 @@ function PortfolioCanvas({
   cameraRequest,
   onSelect,
 }: {
-  graph: PortfolioGraph;
+  model: MapModel;
   snapshot: ProjectWorkMap;
   stale: boolean;
   selected: PortfolioNode;
@@ -880,10 +876,21 @@ function PortfolioCanvas({
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const graph = useMemo(
+    () => buildPortfolioGraph(model, expanded, selected.key, size),
+    [model, expanded, selected.key, size],
+  );
   const lastSize = useRef(size);
-  const lastCenter = useRef(mapCenter);
+  // Camera anchors use unscaled distances from You. Normalized fractions
+  // would change the apparent pan when a portrait layout changes its bounds.
+  const lastAnchor = useRef({ x: 0, y: 0 });
+  const lastBounds = useRef({ width: 0, height: 0 });
   const reducedMotion = useReducedMotion();
-  const frame = useGraphMotion(graph, snapshot, reducedMotion);
+  const frame = useGraphMotion(
+    graph,
+    snapshot,
+    reducedMotion || !lastSize.current.width,
+  );
   const { camera, requestedZoom, fly, interrupt } =
     useCameraMotion(reducedMotion);
   const lastCamera = useRef(camera);
@@ -958,30 +965,40 @@ function PortfolioCanvas({
     const viewport = viewportRef.current;
     const canvas = canvasRef.current;
     if (!viewport || !canvas || !scale) return;
-    if (camera !== lastCamera.current || size !== lastSize.current) {
+    if (
+      camera !== lastCamera.current ||
+      size !== lastSize.current ||
+      frame.width !== lastBounds.current.width ||
+      frame.height !== lastBounds.current.height
+    ) {
       // Resizing can clamp scrollLeft before this render. Restore the point
       // that was actually in the middle of the last measured viewport.
       const center =
-        camera !== lastCamera.current ? camera : lastCenter.current;
+        camera !== lastCamera.current
+          ? { x: camera.x * frame.width, y: camera.y * frame.height }
+          : {
+              x: frame.width / 2 + lastAnchor.current.x,
+              y: frame.height / 2 + lastAnchor.current.y,
+            };
       lastCamera.current = camera;
       lastSize.current = size;
+      lastBounds.current = { width: frame.width, height: frame.height };
       viewport.scrollTo(
-        originX + center.x * frame.width * scale - size.width / 2,
-        originY + center.y * frame.height * scale - size.height / 2,
+        originX + center.x * scale - size.width / 2,
+        originY + center.y * scale - size.height / 2,
       );
     }
     redraw.current = () => {
       if (
         viewport.clientWidth === size.width &&
         viewport.clientHeight === size.height
-      )
-        lastCenter.current = viewportCenter(
-          viewport,
-          frame,
-          scale,
-          originX,
-          originY,
-        );
+      ) {
+        const center = viewportCenter(viewport, frame, scale, originX, originY);
+        lastAnchor.current = {
+          x: (center.x - 0.5) * frame.width,
+          y: (center.y - 0.5) * frame.height,
+        };
+      }
       drawConnections(
         canvas,
         frame,

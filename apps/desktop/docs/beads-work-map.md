@@ -7,6 +7,17 @@ you away from the rest of the portfolio. Use search or the list to reach a bead
 directly. The inspector shows recorded delivery outcomes and links to existing
 project and bead views.
 
+Hover over a node or focus it with the keyboard to highlight its visible
+connections. Select **Compare projects** to see the bead count and status
+breakdown for every project on a common scale. Search and status filters also
+apply to this chart. Select a row to inspect its project and recorded outcomes.
+A bead shared between projects counts once in each row and once in the
+portfolio total.
+
+Forge Lite starts on this same map. **View project trends** in its inspector
+shows daily closures and recorded run phases. Return to the map to continue
+from the same selection and camera position.
+
 The portfolio reads the projects served by the connected Hearth. A project
 whose source cannot be read stays visible with its availability state. Tracker
 progress and currently observed sessions are separate. A completed-bead count

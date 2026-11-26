@@ -95,7 +95,7 @@ export function PortfolioProjectChart({
                       {stateOrder.map((state) => (
                         <span
                           key={state}
-                          data-state={state}
+                          data-work-state={state}
                           style={{
                             width: `${max ? (100 * (counts.get(state) ?? 0)) / max : 0}%`,
                           }}
@@ -104,7 +104,7 @@ export function PortfolioProjectChart({
                     </span>
                     <span class="af-project-chart-values">
                       {groups.map((state) => (
-                        <span key={state} data-state={state}>
+                        <span key={state} data-work-state={state}>
                           <i aria-hidden="true">
                             {portfolioStates[state].mark}
                           </i>

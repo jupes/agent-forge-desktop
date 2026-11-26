@@ -318,10 +318,21 @@ const footprint = {
 function positionGraph(
   visible: Map<string, PortfolioNode>,
   model: PortfolioModel,
+  portrait = false,
 ) {
   const rows: { node: PortfolioNode; angle: number }[][] = [];
+  const projects = model.children.get(OWNER_NODE)?.length ?? 0;
+  // In portrait give the first branch the twelve-o'clock position. This
+  // keeps the two most common small portfolios on a vertical axis.
+  const startAngle =
+    -Math.PI / 2 - (portrait && projects ? Math.PI / projects : 0);
   const stack = [
-    { key: OWNER_NODE, depth: 0, start: -Math.PI / 2, end: Math.PI * 1.5 },
+    {
+      key: OWNER_NODE,
+      depth: 0,
+      start: startAngle,
+      end: startAngle + 2 * Math.PI,
+    },
   ];
   while (stack.length) {
     const item = stack.pop();
@@ -359,15 +370,29 @@ function positionGraph(
   const branchRingSpacing =
     Math.max(Math.hypot(...footprint.project), Math.hypot(...footprint.epic)) +
     12;
+  // When each project has a single visible epic chain, cards face along
+  // their short side. Reserve its actual height and any visible bead cloud.
+  const verticalChain =
+    portrait &&
+    rows
+      .slice(1)
+      .every((row) =>
+        row.every(({ angle }) => Math.abs(Math.cos(angle)) < 1e-6),
+      );
   let radius = 0;
   let previousRingReach = 0;
   for (const [depth, row] of rows.entries()) {
     row.sort((a, b) => a.angle - b.angle);
-    if (depth > 0)
-      radius += Math.max(
-        depth === 1 ? 158 : branchRingSpacing,
-        previousRingReach + 115,
-      );
+    if (depth > 0) {
+      radius += verticalChain
+        ? previousRingReach +
+          Math.max(...row.map(({ node }) => footprint[node.kind][1] / 2)) +
+          26
+        : Math.max(
+            depth === 1 ? 158 : branchRingSpacing,
+            previousRingReach + 115,
+          );
+    }
     for (const [index, entry] of row.entries()) {
       const next = row[(index + 1) % row.length];
       if (!next || next === entry) continue;
@@ -375,12 +400,16 @@ function positionGraph(
         second = footprint[next.node.kind];
       const gap =
         (next.angle - entry.angle + Math.PI * 2) % (Math.PI * 2) || Math.PI * 2;
-      const clearance = (Math.hypot(...first) + Math.hypot(...second)) / 2 + 12;
+      const clearance = verticalChain
+        ? (first[1] + second[1]) / 2 + 12
+        : (Math.hypot(...first) + Math.hypot(...second)) / 2 + 12;
       radius = Math.max(radius, clearance / (2 * Math.sin(gap / 2)));
     }
     previousRingReach = 0;
     for (const { node, angle } of row) {
       const [width, height] = footprint[node.kind];
+      if (verticalChain)
+        previousRingReach = Math.max(previousRingReach, height / 2);
       const dx = Math.cos(angle),
         dy = Math.sin(angle);
       const x = radius * dx,
@@ -406,8 +435,13 @@ function positionGraph(
           leaves.length - leafRow * columns,
         );
         const tangent = ((index % columns) - (widthInRows - 1) / 2) * 53;
-        const outward = 110 + leafRow * 53;
-        previousRingReach = Math.max(previousRingReach, outward);
+        const outward =
+          (verticalChain ? height / 2 + footprint.bead[1] / 2 + 20 : 110) +
+          leafRow * 53;
+        previousRingReach = Math.max(
+          previousRingReach,
+          outward + (verticalChain ? footprint.bead[1] / 2 : 0),
+        );
         positioned.push({
           node: leaf,
           x: x + outward * dx - tangent * dy,
@@ -418,8 +452,8 @@ function positionGraph(
       }
     }
   }
-  let boundX = 190,
-    boundY = 146;
+  let boundX = verticalChain ? 0 : 190,
+    boundY = verticalChain ? 0 : 146;
   for (const { x, y, width, height } of positioned) {
     boundX = Math.max(boundX, Math.abs(x) + width / 2 + 26);
     boundY = Math.max(boundY, Math.abs(y) + height / 2 + 26);
@@ -439,6 +473,7 @@ export function buildPortfolioGraph(
   model: PortfolioModel,
   expanded: ReadonlyMap<string, number>,
   selectedKey: string,
+  viewport?: { width: number; height: number },
 ): PortfolioGraph {
   const demanded = new Set(
     [
@@ -508,8 +543,12 @@ export function buildPortfolioGraph(
     if (match) match.count++;
     else rolled.set(key, { from, to, type: dependency.type, count: 1 });
   }
-  return {
-    ...positionGraph(visible, model),
-    edges: [...edges, ...rolled.values()],
-  };
+  let placement = positionGraph(visible, model);
+  if (viewport && viewport.width > 0 && viewport.width < viewport.height) {
+    const portrait = positionGraph(visible, model, true);
+    const fit = (graph: typeof placement) =>
+      Math.min(viewport.width / graph.width, viewport.height / graph.height, 1);
+    if (fit(portrait) >= fit(placement)) placement = portrait;
+  }
+  return { ...placement, edges: [...edges, ...rolled.values()] };
 }

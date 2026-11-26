@@ -18,6 +18,7 @@ import {
   writeDistributionNotices,
 } from "../distribution/notices";
 import { writeRuntimeDistributionNotices } from "../distribution/runtime-notices";
+import { isMain } from "../is-main";
 
 const root = resolve(import.meta.dir, "../..");
 const app = join(root, "apps/lite");
@@ -150,7 +151,7 @@ async function main() {
     if (!published && existsSync(scratch)) rmSync(scratch, { recursive: true });
   }
 }
-if (import.meta.main) {
+if (isMain(import.meta)) {
   const args = process.argv.slice(2);
   const open = args[0] === "--open";
   if (
