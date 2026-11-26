@@ -41,6 +41,9 @@ jobs:
       - name: Test Lite native reads against isolated fixtures
         timeout-minutes: 4
         run: cargo test --locked --release --features tauri/custom-protocol --manifest-path apps/lite/build/native-input/apps/desktop/src-tauri/Cargo.toml --bin agent-forge-lite
+      - name: Verify the hosted WebView2 runtime
+        timeout-minutes: 3
+        run: ./tests/lite-native/webview-runtime.ps1
       - name: Open the staged native viewer against an isolated catalog
         timeout-minutes: 4
         run: |
