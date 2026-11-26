@@ -809,6 +809,23 @@ function graphNodeLabel(node: PortfolioNode, stale: boolean) {
   return node.title;
 }
 
+function viewportCenter(
+  viewport: HTMLDivElement,
+  frame: GraphFrame,
+  scale: number,
+  originX: number,
+  originY: number,
+) {
+  return {
+    x:
+      (viewport.scrollLeft + viewport.clientWidth / 2 - originX) /
+      (frame.width * scale),
+    y:
+      (viewport.scrollTop + viewport.clientHeight / 2 - originY) /
+      (frame.height * scale),
+  };
+}
+
 function PortfolioCanvas({
   graph,
   snapshot,
@@ -830,8 +847,9 @@ function PortfolioCanvas({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previousMargins = useRef({ x: 0, y: 0 });
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const lastSize = useRef(size);
+  const lastCenter = useRef(mapCenter);
   const reducedMotion = useReducedMotion();
   const frame = useGraphMotion(graph, snapshot, reducedMotion);
   const { camera, requestedZoom, fly, interrupt } =
@@ -876,8 +894,15 @@ function PortfolioCanvas({
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const update = () =>
-      setSize({ width: viewport.clientWidth, height: viewport.clientHeight });
+    const update = () => {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      setSize((previous) =>
+        previous.width === width && previous.height === height
+          ? previous
+          : { width, height },
+      );
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(viewport);
@@ -886,27 +911,32 @@ function PortfolioCanvas({
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport) return;
-    const previous = previousMargins.current;
-    viewport.scrollTo(
-      viewport.scrollLeft + marginX - previous.x,
-      viewport.scrollTop + marginY - previous.y,
-    );
-    previousMargins.current = { x: marginX, y: marginY };
-  }, [marginX, marginY]);
-
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
     const canvas = canvasRef.current;
     if (!viewport || !canvas || !scale) return;
-    if (camera !== lastCamera.current) {
+    if (camera !== lastCamera.current || size !== lastSize.current) {
+      // Resizing can clamp scrollLeft before this render. Restore the point
+      // that was actually in the middle of the last measured viewport.
+      const center =
+        camera !== lastCamera.current ? camera : lastCenter.current;
       lastCamera.current = camera;
+      lastSize.current = size;
       viewport.scrollTo(
-        originX + camera.x * frame.width * scale - size.width / 2,
-        originY + camera.y * frame.height * scale - size.height / 2,
+        originX + center.x * frame.width * scale - size.width / 2,
+        originY + center.y * frame.height * scale - size.height / 2,
       );
     }
-    redraw.current = () =>
+    redraw.current = () => {
+      if (
+        viewport.clientWidth === size.width &&
+        viewport.clientHeight === size.height
+      )
+        lastCenter.current = viewportCenter(
+          viewport,
+          frame,
+          scale,
+          originX,
+          originY,
+        );
       drawConnections(
         canvas,
         frame,
@@ -916,6 +946,7 @@ function PortfolioCanvas({
         originX - viewport.scrollLeft,
         originY - viewport.scrollTop,
       );
+    };
     // Lines and buttons consume the same frame before the browser paints.
     redraw.current();
   }, [frame, layout, camera, size, selected.key, scale, originX, originY]);
@@ -939,10 +970,7 @@ function PortfolioCanvas({
   const changeZoom = (next: number, point?: { x: number; y: number }) => {
     const viewport = viewportRef.current;
     if (!viewport || !scale) return;
-    const x =
-      (viewport.scrollLeft + size.width / 2 - originX) / (scale * frame.width);
-    const y =
-      (viewport.scrollTop + size.height / 2 - originY) / (scale * frame.height);
+    const { x, y } = viewportCenter(viewport, frame, scale, originX, originY);
     fly(
       { zoom: camera.zoom, x, y },
       { zoom: next, x: point?.x ?? x, y: point?.y ?? y },

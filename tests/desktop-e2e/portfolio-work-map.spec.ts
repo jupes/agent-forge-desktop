@@ -430,6 +430,44 @@ test("left-click drag pans the Work Map and Back to center preserves the focused
       })
       .toBeLessThan(2);
   };
+  const centerOffset = async () => {
+    const [owner, viewport] = await Promise.all([
+      position(you),
+      position(graph),
+    ]);
+    return {
+      x: owner.x - viewport.x + (owner.width - viewport.width) / 2,
+      y: owner.y - viewport.y + (owner.height - viewport.height) / 2,
+      width: owner.width,
+    };
+  };
+  const expectAnchorAcrossSizes = async () => {
+    const desktop = page.viewportSize();
+    if (!desktop) throw Error("Expected a controlled desktop viewport");
+    const before = await centerOffset();
+    for (const size of [{ width: 390, height: 844 }, desktop]) {
+      await page.setViewportSize(size);
+      // Observe the map after its ResizeObserver has had a full rendering turn.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect
+        .poll(async () => {
+          const after = await centerOffset();
+          // A fixed point in the graph moves in CSS pixels in proportion to scale.
+          const ratio = after.width / before.width;
+          return Math.hypot(
+            after.x - before.x * ratio,
+            after.y - before.y * ratio,
+          );
+        })
+        .toBeLessThan(3);
+    }
+    expect((await centerOffset()).width).toBeCloseTo(before.width, 1);
+  };
 
   const fitted = await ownerPosition();
   const canvas = await position(graph);
@@ -449,9 +487,11 @@ test("left-click drag pans the Work Map and Back to center preserves the focused
   expect(await position(center)).toEqual(docked);
   await page.mouse.move(canvas.x + 150, canvas.y + 120);
   await expectMoved(fitted, 60, 36);
+  await expectAnchorAcrossSizes();
 
   await scale.getByRole("button", { name: "Fit", exact: true }).click();
   await expectMoved(fitted, 0, 0);
+  await expectAnchorAcrossSizes();
   await scale.getByRole("button", { name: "Zoom in" }).click();
   await expect
     .poll(async () => (await position(you)).width)
@@ -481,11 +521,8 @@ test("left-click drag pans the Work Map and Back to center preserves the focused
   await completed.click();
   await scale.getByRole("button", { name: "Focus selection" }).click();
   const distanceToCenter = async () => {
-    const owner = await ownerPosition();
-    return Math.hypot(
-      owner.x + (owner.width - canvas.width) / 2,
-      owner.y + (owner.height - canvas.height) / 2,
-    );
+    const offset = await centerOffset();
+    return Math.hypot(offset.x, offset.y);
   };
   await expect.poll(distanceToCenter).toBeGreaterThan(20);
   const focusedWidth = (await ownerPosition()).width;

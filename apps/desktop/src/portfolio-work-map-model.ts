@@ -355,12 +355,19 @@ function positionGraph(
   }
 
   const positioned: PositionedNode[] = [];
+  // Leave a visible edge even when cards on adjacent rings face corner to corner.
+  const branchRingSpacing =
+    Math.max(Math.hypot(...footprint.project), Math.hypot(...footprint.epic)) +
+    12;
   let radius = 0;
   let previousRingReach = 0;
   for (const [depth, row] of rows.entries()) {
     row.sort((a, b) => a.angle - b.angle);
     if (depth > 0)
-      radius += Math.max(depth === 1 ? 158 : 118, previousRingReach + 115);
+      radius += Math.max(
+        depth === 1 ? 158 : branchRingSpacing,
+        previousRingReach + 115,
+      );
     for (const [index, entry] of row.entries()) {
       const next = row[(index + 1) % row.length];
       if (!next || next === entry) continue;

@@ -135,6 +135,31 @@ test("overview roots every project to You and connects the live bead to its clus
   ).toMatchObject({ total: 2, completed: 1, blocked: 1 });
 });
 
+test("a horizontal live branch leaves visible edges between project and epic cards", () => {
+  const model = buildPortfolioMap({
+    ...snapshot,
+    projects: snapshot.projects.filter(({ id }) => id !== "paused"),
+    beads: [
+      bead("live", "Forge the release", "desktop", "desktop-nested", "working"),
+    ],
+    dependencies: [],
+  });
+  const graph = buildPortfolioGraph(model, new Map(), OWNER_NODE);
+  const positions = new Map(graph.nodes.map((item) => [item.node.key, item]));
+  for (const key of [
+    epicNodeKey("desktop", "desktop-root"),
+    epicNodeKey("desktop", "desktop-nested"),
+    epicNodeKey("engine", "engine-root"),
+  ]) {
+    const child = positions.get(key);
+    const parent = positions.get(child?.node.parentKey ?? "");
+    if (!child || !parent) throw Error(`Missing branch for ${key}`);
+    expect(child.y).toBeCloseTo(parent.y);
+    const gap = Math.abs(child.x - parent.x) - (child.width + parent.width) / 2;
+    expect(gap).toBeGreaterThanOrEqual(12);
+  }
+});
+
 test("opening a nested epic admits its beads and keeps other project branches connected", () => {
   const model = buildPortfolioMap(snapshot);
   const selected = beadNodeKey("desktop", "desktop-issue");
