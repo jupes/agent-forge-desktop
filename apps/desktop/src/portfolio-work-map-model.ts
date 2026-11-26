@@ -51,6 +51,7 @@ interface PortfolioModel {
   nodes: Map<string, PortfolioNode>;
   children: Map<string, PortfolioNode[]>;
   placements: Map<string, BeadNode[]>;
+  workingNow: BeadNode[];
   dependencies: readonly BeadsDependency[];
 }
 
@@ -91,6 +92,10 @@ export function isPortfolioBead(node: PortfolioNode): node is BeadNode {
   return (node.kind === "bead" || node.kind === "epic") && node.bead !== null;
 }
 
+export function isWorkingBead(node: PortfolioNode): boolean {
+  return isPortfolioBead(node) && node.bead.workState === "working";
+}
+
 function rememberCounts(node: PortfolioNode, bead: Bead) {
   node.counts.total++;
   node.counts[bead.workState]++;
@@ -124,6 +129,7 @@ export function buildPortfolioMap(data: ProjectWorkMap): PortfolioModel {
   const nodes = new Map<string, PortfolioNode>([[owner.key, owner]]);
   const children = new Map<string, PortfolioNode[]>();
   const placements = new Map<string, BeadNode[]>();
+  const workingByProject = new Map<string, BeadNode>();
   const beads = new Map(data.beads.map((bead) => [bead.id, bead]));
 
   for (const project of data.projects) {
@@ -181,6 +187,16 @@ export function buildPortfolioMap(data: ProjectWorkMap): PortfolioModel {
       children.set(parent, branch);
     }
     if (!isPortfolioBead(node)) continue;
+    if (isWorkingBead(node)) {
+      // Keep the overview small and stable. Prefer an individual task to its epic.
+      const current = workingByProject.get(node.projectId);
+      if (
+        !current ||
+        (current.kind === "epic" && node.kind === "bead") ||
+        (node.kind === current.kind && byTitle(node, current) < 0)
+      )
+        workingByProject.set(node.projectId, node);
+    }
     const assigned = placements.get(node.bead.id) ?? [];
     assigned.push(node);
     placements.set(node.bead.id, assigned);
@@ -205,7 +221,13 @@ export function buildPortfolioMap(data: ProjectWorkMap): PortfolioModel {
     );
     node.outcomes = node.outcomes.slice(0, 3);
   }
-  return { nodes, children, placements, dependencies: data.dependencies };
+  return {
+    nodes,
+    children,
+    placements,
+    workingNow: [...workingByProject.values()].sort(byTitle),
+    dependencies: data.dependencies,
+  };
 }
 
 export function portfolioPath(model: PortfolioModel, key: string) {
@@ -412,9 +434,11 @@ export function buildPortfolioGraph(
   selectedKey: string,
 ): PortfolioGraph {
   const demanded = new Set(
-    [...expanded.keys(), selectedKey].flatMap((key) =>
-      portfolioPath(model, key).map((node) => node.key),
-    ),
+    [
+      ...expanded.keys(),
+      selectedKey,
+      ...model.workingNow.map((node) => node.key),
+    ].flatMap((key) => portfolioPath(model, key).map((node) => node.key)),
   );
   const visible = new Map<string, PortfolioNode>();
   const queue = [OWNER_NODE];

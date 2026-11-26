@@ -174,6 +174,35 @@
     var(--portfolio-canvas);
 }
 
+.af-portfolio-canvas .af-portfolio-recenter {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-start: 12px;
+  z-index: 3;
+  min-height: 40px;
+  padding-inline: 12px;
+  border: 1px solid var(--portfolio-border);
+  border-radius: 999px;
+  color: var(--portfolio-text);
+  background: var(--portfolio-surface);
+  box-shadow: 0 2px 6px
+    color-mix(in srgb, var(--portfolio-canvas) 65%, transparent);
+}
+
+.af-portfolio-canvas .af-portfolio-recenter:is(:hover, :focus-visible) {
+  border-color: var(--portfolio-accent);
+  background: var(--portfolio-soft);
+}
+
+.af-portfolio-center-mark {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  color: var(--portfolio-accent);
+  background: radial-gradient(circle, currentColor 2px, transparent 2.5px);
+}
+
 .af-portfolio-connections {
   position: absolute;
   inset: 0;

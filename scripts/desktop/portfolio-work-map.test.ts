@@ -100,10 +100,15 @@ const snapshot: ProjectWorkMap = {
   dependencies: [{ from: "desktop-issue", to: "engine-issue", type: "blocks" }],
 };
 
-test("overview roots every project to You and rolls prerequisite links into visible epic clusters", () => {
+test("overview roots every project to You and connects the live bead to its cluster and its dependent", () => {
   const model = buildPortfolioMap(snapshot);
   const graph = buildPortfolioGraph(model, new Map(), OWNER_NODE);
-  expect(graph.nodes.map(({ node }) => node.kind)).not.toContain("bead");
+  const live = beadNodeKey("engine", "engine-issue");
+  expect(
+    graph.nodes
+      .filter(({ node }) => node.kind === "bead")
+      .map(({ node }) => node.key),
+  ).toEqual([live]);
   expect(
     graph.nodes.filter(({ node }) => node.kind === "project"),
   ).toHaveLength(3);
@@ -115,6 +120,12 @@ test("overview roots every project to You and rolls prerequisite links into visi
   });
   expect(graph.edges).toContainEqual({
     from: epicNodeKey("engine", "engine-root"),
+    to: live,
+    type: "belongs",
+    count: 1,
+  });
+  expect(graph.edges).toContainEqual({
+    from: live,
     to: epicNodeKey("desktop", "desktop-root"),
     type: "blocks",
     count: 1,
@@ -137,7 +148,7 @@ test("opening a nested epic admits its beads and keeps other project branches co
     graph.nodes.filter(({ node }) => node.kind === "project"),
   ).toHaveLength(3);
   expect(graph.edges).toContainEqual({
-    from: epicNodeKey("engine", "engine-root"),
+    from: beadNodeKey("engine", "engine-issue"),
     to: selected,
     type: "blocks",
     count: 1,
@@ -145,6 +156,73 @@ test("opening a nested epic admits its beads and keeps other project branches co
   expect(
     filterPortfolioBeads(model, "installer", "blocked").map(({ key }) => key),
   ).toEqual([selected]);
+});
+
+test("a live nested bead reveals its ancestry and an ended turn rolls the dependency back up", () => {
+  const states = (workState: "working" | "in_progress") =>
+    buildPortfolioGraph(
+      buildPortfolioMap({
+        ...snapshot,
+        beads: snapshot.beads.map((item) => {
+          if (item.id === "desktop-issue")
+            return { ...item, status: "in_progress", workState };
+          if (item.id === "engine-issue")
+            return { ...item, status: "closed", workState: "completed" };
+          return item;
+        }),
+      }),
+      new Map(),
+      OWNER_NODE,
+    );
+  const active = states("working");
+  const live = beadNodeKey("desktop", "desktop-issue");
+  const root = epicNodeKey("desktop", "desktop-root");
+  const nested = epicNodeKey("desktop", "desktop-nested");
+  expect(active.edges).toContainEqual({
+    from: root,
+    to: nested,
+    type: "belongs",
+    count: 1,
+  });
+  expect(active.edges).toContainEqual({
+    from: nested,
+    to: live,
+    type: "belongs",
+    count: 1,
+  });
+  const stopped = states("in_progress");
+  expect(
+    stopped.nodes.some(
+      ({ node }) => node.kind === "bead" || node.key === nested,
+    ),
+  ).toBe(false);
+  expect(stopped.edges).toContainEqual({
+    from: epicNodeKey("engine", "engine-root"),
+    to: root,
+    type: "blocks",
+    count: 1,
+  });
+});
+
+test("the overview shows one active bead per project and its branch reveals other live peers", () => {
+  const model = buildPortfolioMap({
+    ...snapshot,
+    beads: [
+      ...snapshot.beads,
+      bead("engine-extra", "Verify runtime", "engine", "engine-root", "working"),
+      bead("desktop-extra", "Write release notes", "desktop", "desktop-root", "working"),
+    ],
+  });
+  const overview = buildPortfolioGraph(model, new Map(), OWNER_NODE);
+  const leaves = (graph: typeof overview) =>
+    graph.nodes.filter(({ node }) => node.kind === "bead").map(({ node }) => node.key).sort();
+  expect(leaves(overview)).toEqual([
+    beadNodeKey("desktop", "desktop-extra"),
+    beadNodeKey("engine", "engine-issue"),
+  ]);
+  const epic = epicNodeKey("engine", "engine-root");
+  const expanded = buildPortfolioGraph(model, new Map([[epic, 20]]), epic);
+  expect(leaves(expanded)).toContain(beadNodeKey("engine", "engine-extra"));
 });
 
 test("a dense epic keeps its revealed beads near the cluster instead of enlarging the entire map ring", () => {

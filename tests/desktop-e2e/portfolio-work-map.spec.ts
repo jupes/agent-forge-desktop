@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
+import { projectWorkMapSchema } from "../../scripts/projects/project-work-map-protocol";
 import {
   readState,
   type StandInIssue,
@@ -61,12 +62,18 @@ function seedWorkMap(): void {
       status: "closed",
       notes: `Unrelated private drafting note.\nDelivered: ${result}`,
     });
-    const runtime = bead("map-runtime", "Map runtime metadata", beta);
+    const runtime = bead("map-runtime", "Map runtime metadata", beta, {
+      status: "in_progress",
+    });
+    const notes = bead("map-notes", "Draft release notes", beta, {
+      status: "in_progress",
+    });
     writeState(BD_STAND_IN_STATE, {
       ...state,
       [installer.id]: installer,
       [cleanup.id]: cleanup,
       [runtime.id]: runtime,
+      [notes.id]: notes,
     });
   });
 }
@@ -272,7 +279,105 @@ test("epic expansion keeps lines attached, reverses in place and honors reduced 
   }
 });
 
-test("left-click drag pans the Work Map without opening a node", async ({
+test("live work is visible on the collapsed map and honors reduced motion", async ({
+  page,
+}) => {
+  seedWorkMap();
+  let observation: "live" | "unavailable" | "ended" = "live";
+  // The engine tests owned-turn identity and freshness. Change just that observed
+  // state on an admitted tracker row to exercise the two UI snapshots here.
+  await page.route(`**${mapPath}`, async (route) => {
+    const response = await route.fetch();
+    if (!response.ok() || observation === "ended")
+      return route.fulfill({ response });
+    if (observation === "unavailable")
+      return route.fulfill({
+        status: 503,
+        json: { ok: false, data: null, error: "Fixture read unavailable" },
+      });
+    const envelope = await response.json();
+    if (!envelope.ok) return route.fulfill({ response });
+    const data = projectWorkMapSchema.parse(envelope.data);
+    const observed = data.beads.find((bead) => bead.id === "map-runtime");
+    if (observed?.workState !== "in_progress")
+      throw Error("Expected the admitted in-progress runtime bead");
+    observed.workState = "working";
+    await route.fulfill({ response, json: { ...envelope, data } });
+  });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await openSettled(page, "/index.html#/desktop/work-map");
+  const graph = page.getByRole("group", { name: "Portfolio graph" });
+  const live = graph.getByRole("button", {
+    name: "map-runtime, Map runtime metadata, Working now",
+  });
+  const epic = graph.getByRole("button", { name: "Runtime packaging, epic" });
+  const trackerOnly = graph.getByRole("button", { name: /^map-notes,/ });
+  const hammer = live.locator(".af-portfolio-forge-hammer");
+  const hammerLoops = () =>
+    hammer.evaluate((part) =>
+      part
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === "running" &&
+            animation.effect?.getTiming().iterations === Infinity,
+        ),
+    );
+  await expect(epic).toHaveAttribute("aria-expanded", "false");
+  await expect(live).toBeInViewport();
+  await expect(trackerOnly).toHaveCount(0);
+  await expect(graph.locator('[data-forging="true"]')).toHaveCount(1);
+  await expect.poll(hammerLoops).toBe(true);
+  await live.click();
+  await expect(epic).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.getByRole("heading", { name: "Map runtime metadata" }),
+  ).toBeVisible();
+  await expect(trackerOnly).toHaveAccessibleName(/In progress/);
+  await expect(trackerOnly.locator(".af-portfolio-forge")).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(hammerLoops).toBe(false);
+  await expect(hammer).toBeVisible();
+
+  await graph.getByRole("button", { name: "You", exact: true }).press("Enter");
+  const workingNow = page.getByRole("region", {
+    name: "Working now",
+    exact: true,
+  });
+  await workingNow
+    .getByRole("button", { name: /^map-runtime, Map runtime metadata, Beta$/ })
+    .press("Enter");
+  await expect(live).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(async () => {
+      const [bead, viewport] = await Promise.all([
+        live.boundingBox(),
+        graph.boundingBox(),
+      ]);
+      if (!bead || !viewport) return Infinity;
+      return Math.hypot(
+        bead.x - viewport.x + (bead.width - viewport.width) / 2,
+        bead.y - viewport.y + (bead.height - viewport.height) / 2,
+      );
+    })
+    .toBeLessThan(2);
+  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  observation = "unavailable";
+  await refresh.click();
+  await expect(
+    graph.getByRole("button", { name: /^map-runtime,/ }),
+  ).toHaveAccessibleName(/Last seen working/);
+  await expect(graph.locator('[data-forging="true"]')).toHaveCount(0);
+  observation = "ended";
+  await refresh.click();
+  await expect(
+    graph.getByRole("button", { name: /^map-runtime,/ }),
+  ).toHaveAccessibleName(/In progress/);
+  await expect(graph.locator(".af-portfolio-forge")).toHaveCount(0);
+});
+
+test("left-click drag pans the Work Map and Back to center preserves the focused branch", async ({
   page,
 }) => {
   seedWorkMap();
@@ -282,7 +387,9 @@ test("left-click drag pans the Work Map without opening a node", async ({
   const you = graph.getByRole("button", { name: "You", exact: true });
   const release = graph.getByRole("button", { name: "Release fixes, epic" });
   const scale = page.getByRole("group", { name: "Graph scale" });
+  const center = page.getByRole("button", { name: "Back to center" });
   await expect(you).toBeInViewport();
+  await expect(center).toBeInViewport();
 
   const position = async (node: typeof you) => {
     const box = await node.boundingBox();
@@ -297,7 +404,12 @@ test("left-click drag pans the Work Map without opening a node", async ({
   };
   const ownerPosition = async () => {
     const [box, viewport] = await Promise.all([position(you), position(graph)]);
-    return { x: box.x - viewport.x, y: box.y - viewport.y, width: box.width };
+    return {
+      x: box.x - viewport.x,
+      y: box.y - viewport.y,
+      width: box.width,
+      height: box.height,
+    };
   };
   const expectMoved = async (
     before: { x: number; y: number },
@@ -317,8 +429,10 @@ test("left-click drag pans the Work Map without opening a node", async ({
 
   const fitted = await ownerPosition();
   const canvas = await position(graph);
-  await drag(canvas.x + 24, canvas.y + 24, 60, 36);
+  const docked = await position(center);
+  await drag(canvas.x + 24, canvas.y + canvas.height - 90, 60, 36);
   await expectMoved(fitted, 60, 36);
+  expect(await position(center)).toEqual(docked);
   await page.mouse.move(canvas.x + 150, canvas.y + 120);
   await expectMoved(fitted, 60, 36);
 
@@ -347,6 +461,26 @@ test("left-click drag pans the Work Map without opening a node", async ({
   await page.mouse.up();
   await expect(release).toHaveAttribute("aria-expanded", "true");
   await expect(release).toHaveAttribute("aria-pressed", "true");
+  const completed = page
+    .getByRole("group", { name: "Filter by work status" })
+    .getByRole("button", { name: "Completed", exact: true });
+  await completed.click();
+  await scale.getByRole("button", { name: "Focus selection" }).click();
+  const distanceToCenter = async () => {
+    const owner = await ownerPosition();
+    return Math.hypot(
+      owner.x + (owner.width - canvas.width) / 2,
+      owner.y + (owner.height - canvas.height) / 2,
+    );
+  };
+  await expect.poll(distanceToCenter).toBeGreaterThan(20);
+  const focusedWidth = (await ownerPosition()).width;
+  await center.press("Enter");
+  await expect.poll(distanceToCenter).toBeLessThan(2);
+  expect((await ownerPosition()).width).toBeCloseTo(focusedWidth, 1);
+  await expect(release).toHaveAttribute("aria-expanded", "true");
+  await expect(release).toHaveAttribute("aria-pressed", "true");
+  await expect(completed).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Default prepares a session with references across projects and an explicit Beads export", async ({
