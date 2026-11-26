@@ -8,6 +8,7 @@ import { desktopHref } from "./navigation";
 import { openProject, projectSessionProvider } from "./projects-model";
 import "./overview.css";
 import type { ProviderReadinessPage } from "../../../types/provider-readiness";
+import { ForgeRunPhases, ForgeThroughputChart } from "./ForgeDataViews";
 import { KeeperBriefPanel } from "./KeeperBrief";
 import type { KeeperClient } from "./keeper-client";
 import { ProjectProviderUsage } from "./Providers";
@@ -255,11 +256,12 @@ export function ProjectOverviewView({
         {data.summary.runs
           .filter((run) => !run.complete)
           .map((run) => (
-            <p key={run.slug}>
+            <div key={run.slug}>
               <a href={link("runs", "run", run.slug)}>{run.slug}</a> ·{" "}
-              {run.phase} · {run.completed.length}/4 phases complete
+              {run.completed.length}/4 phases complete
               {run.halted ? ` · Halted: ${run.halted.reason}` : ""}
-            </p>
+              <ForgeRunPhases run={run} />
+            </div>
           ))}
         <p class="af-overview-muted">
           Observations from this checkout only; other worktrees are not
@@ -290,34 +292,7 @@ export function ProjectOverviewView({
         <h2>Recorded throughput</h2>
         <p>{data.throughput.source}</p>
         {days ? (
-          <>
-            <p>
-              {days[0]?.date} – {days.at(-1)?.date} ·{" "}
-              {days.reduce((total, day) => total + day.count, 0)} recorded
-              closures
-            </p>
-            <div
-              class="af-throughput-chart"
-              role="img"
-              aria-label={days
-                .map((day) => `${day.date}: ${day.count} closures`)
-                .join("; ")}
-            >
-              {days.map((day) => (
-                <span
-                  key={day.date}
-                  title={`${day.date}: ${day.count} recorded closures`}
-                  style={{
-                    height: `${Math.max(2, Math.min(90, day.count * 10))}px`,
-                  }}
-                />
-              ))}
-            </div>
-            <p class="af-overview-muted">
-              UTC days · bar heights capped at 9; exact counts in accessible
-              chart text.
-            </p>
-          </>
+          <ForgeThroughputChart days={days} />
         ) : (
           <p>History unavailable.</p>
         )}

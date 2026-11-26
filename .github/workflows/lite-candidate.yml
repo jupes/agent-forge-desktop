@@ -1,0 +1,142 @@
+name: Forge Lite candidate
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    name: Forge Lite Windows portable candidate
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      BUN_VERSION: 1.4.2
+      RUSTUP_TOOLCHAIN: 1.99.1-x86_64-pc-windows-msvc
+      CARGO_INCREMENTAL: '0'
+      CANDIDATE_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .work/desktop
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SOURCE_SHA }}
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Assemble the pinned workspace
+        working-directory: .
+        run: |
+          if ((bun --version) -ne $env:BUN_VERSION) { throw 'Bun version mismatch' }
+          if ((rustc --version) -notmatch '^rustc 1[.]99[.]1 ') { throw 'Rust version mismatch' }
+          bun tools/workspace.ts
+      - run: bun install --frozen-lockfile
+      - name: Build the Lite portable app
+        timeout-minutes: 20
+        run: bun run lite:build
+      - name: Test Lite native reads against isolated fixtures
+        timeout-minutes: 4
+        run: cargo test --locked --release --features tauri/custom-protocol --manifest-path apps/lite/build/native-input/apps/desktop/src-tauri/Cargo.toml --bin agent-forge-lite
+      - name: Open the staged native viewer against an isolated catalog
+        timeout-minutes: 4
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:AGENT_FORGE_HOME = Join-Path $env:RUNNER_TEMP ('forge-lite-home-' + [Guid]::NewGuid().ToString('N'))
+          $fixtureRoot = Join-Path $env:RUNNER_TEMP ('forge-lite-source-' + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $env:AGENT_FORGE_HOME | Out-Null
+          $ownerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          icacls $env:AGENT_FORGE_HOME /inheritance:r /grant:r "*${ownerSid}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F'
+          if ($LASTEXITCODE) { throw 'Could not protect the isolated tracker fixture' }
+          git init --quiet $fixtureRoot
+          if ($LASTEXITCODE) { throw 'Isolated fixture initialization failed' }
+          $hearthSource = New-Item -ItemType Directory -Path (Join-Path $fixtureRoot 'scripts/hearth') -Force
+          New-Item -ItemType File -Path (Join-Path $hearthSource 'server.ts') | Out-Null
+          $companion = (Resolve-Path apps/lite/build/windows-x64/desktop-host.exe).Path
+          $result = & $companion work-map $fixtureRoot
+          if ($LASTEXITCODE -ne 0) { throw 'The compiled reader failed with an empty isolated catalog' }
+          $snapshot = $result | ConvertFrom-Json
+          if ($null -eq $snapshot.projects -or $snapshot.projects.Count -ne 0 -or $snapshot.trackerAvailable -ne $false -or $snapshot.sessionsComplete -ne $false) {
+            throw 'The empty source was not represented as unavailable'
+          }
+          bun --no-env-file tests/lite-native/smoke.ts $fixtureRoot
+          if ($LASTEXITCODE) { throw 'The staged Windows WebView did not complete the isolated read journey' }
+          $env:LITE_FIXTURE_WORKSPACE = $fixtureRoot
+          bun --no-env-file -e 'import {mkdirSync,writeFileSync} from "node:fs"; import {join} from "node:path"; import {projectCatalogFixture} from "./scripts/projects/testing"; const dir=join(process.env.AGENT_FORGE_HOME,"projects"); mkdirSync(dir,{recursive:true}); writeFileSync(join(dir,"catalog.json"),JSON.stringify(projectCatalogFixture(process.env.LITE_FIXTURE_WORKSPACE)));'
+          if ($LASTEXITCODE) { throw 'Isolated catalog fixture failed' }
+          $catalogFile = Join-Path $env:AGENT_FORGE_HOME 'projects/catalog.json'
+          $before = (Get-FileHash -LiteralPath $catalogFile).Hash
+          $result = & $companion work-map $fixtureRoot
+          if ($LASTEXITCODE) { throw 'Could not read a saved fixture project' }
+          $snapshot = $result | ConvertFrom-Json
+          if ($snapshot.projects.Count -ne 1 -or $snapshot.projects[0].name -cne 'Alpha' -or ($snapshot.beads | Where-Object workState -eq 'working')) {
+            throw 'The saved project was lost or active work was invented'
+          }
+          if ((Get-FileHash -LiteralPath $catalogFile).Hash -cne $before) { throw 'Reading changed the saved catalog' }
+      - name: Upload native visualization evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-lite-native-work-map
+          path: .work/desktop/.tmp/screenshots/forge-lite/native-work-map.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Verify the portable app's identity and inventory its files
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content .forge-desktop-source.json -Raw | ConvertFrom-Json
+          if ($source.desktopCommit -cne $env:CANDIDATE_SOURCE_SHA) { throw 'Unexpected product revision' }
+          $pin = git -C ../.. rev-parse HEAD:engine
+          if ($LASTEXITCODE -or $source.engineCommit -cne $pin) { throw 'Unexpected engine revision' }
+          git diff --exit-code -- bun.lock package.json apps/desktop/src-tauri/Cargo.lock
+          if ($LASTEXITCODE) { throw 'The build modified a lock or package manifest' }
+          $native = Get-Content apps/lite/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if ($native.identifier -cne 'dev.agentforge.lite') { throw 'Unexpected Lite app identifier' }
+          $stage = (Resolve-Path -LiteralPath apps/lite/build/windows-x64).Path
+          foreach ($leaf in @('agent-forge-lite.exe','desktop-host.exe','hearth.exe','LICENSE','NOTICE','DISTRIBUTION-NOTICES.txt','THIRD-PARTY-NOTICES.txt')) {
+            if (!(Test-Path -LiteralPath (Join-Path $stage $leaf) -PathType Leaf)) { throw "Missing portable file: $leaf" }
+          }
+          $notices = @{
+            'LICENSE' = 'LICENSE'
+            'NOTICE' = 'NOTICE'
+            '.claude/skills/ATTRIBUTION.md' = '.claude/skills/ATTRIBUTION.md'
+            'docs/fonts/LICENSE-Inter.txt' = 'docs/fonts/LICENSE-Inter.txt'
+            'THIRD-PARTY-NOTICES.txt' = 'scripts/distribution/THIRD-PARTY-NOTICES.txt'
+          }
+          foreach ($notice in $notices.GetEnumerator()) {
+            $expected = (Get-FileHash -LiteralPath $notice.Value).Hash
+            foreach ($root in @($stage,'apps/lite/dist')) {
+              if ((Get-FileHash -LiteralPath (Join-Path $root $notice.Key)).Hash -cne $expected) { throw 'Lite notice bytes differ from source' }
+            }
+          }
+          if (Test-Path -LiteralPath (Join-Path $stage 'agent-forge-desktop.exe')) { throw 'Full Desktop executable in Lite output' }
+          $entries = @(Get-ChildItem -LiteralPath $stage -Force -Recurse)
+          if ($entries | Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint }) { throw 'Unexpected linked file' }
+          $files = @($entries | Where-Object { !$_.PSIsContainer } | Sort-Object FullName)
+          $receipt = [ordered]@{
+            product = $native.productName
+            identifier = $native.identifier
+            version = $source.desktopVersion
+            kind = 'unsigned-portable-engineering-candidate'
+            sourceCommit = $source.desktopCommit
+            engineCommit = $source.engineCommit
+            sourceDigest = $source.sourceDigest
+            files = @($files | ForEach-Object {
+              [ordered]@{
+                path = [IO.Path]::GetRelativePath($stage, $_.FullName).Replace('\','/')
+                bytes = $_.Length
+                sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              }
+            })
+          }
+          $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $stage 'CANDIDATE.json') -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-forge-lite-windows-x64-${{ env.CANDIDATE_SOURCE_SHA }}
+          path: .work/desktop/apps/lite/build/windows-x64/
+          include-hidden-files: true
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

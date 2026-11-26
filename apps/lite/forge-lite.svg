@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Forge Lite</title>
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="#20232c"/>
+  <polyline points="17,22 29,15 43,22 50,12" fill="none" stroke="#db985b" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="17" cy="22" r="3" fill="#f4d2a2"/>
+  <circle cx="29" cy="15" r="3.5" fill="#f6b773"/>
+  <circle cx="43" cy="22" r="3" fill="#f4d2a2"/>
+  <circle cx="50" cy="12" r="3" fill="#f6b773"/>
+  <polygon points="8,31 25,31 25,28 54,28 54,34 46,37 38,37 37,42 40,47 47,49 47,53 22,53 22,49 28,47 30,42 28,37 22,37 15,35" fill="#e2d5c1"/>
+  <polygon points="25,28 54,28 54,31 25,31" fill="#ffb368"/>
+  <polygon points="28,37 38,37 37,42 40,47 33,47 34,42" fill="#c5ac8f"/>
+</svg>

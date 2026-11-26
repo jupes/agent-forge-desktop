@@ -124,6 +124,15 @@ test("the protected Work Map starts at the portfolio and follows epic delivery a
   await expect(packaging).toHaveAttribute("aria-expanded", "false");
   await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
 
+  await release.hover();
+  await expect(
+    graph.getByRole("button", { name: alpha.name, exact: true }),
+  ).toHaveAttribute("data-neighbor", "true");
+  await expect(
+    graph.getByRole("button", { name: beta.name, exact: true }),
+  ).toHaveAttribute("data-neighbor", "false");
+  await expect(release).toHaveAttribute("aria-expanded", "false");
+
   await release.press("Enter");
   await expect(release).toHaveAttribute("aria-expanded", "true");
   const details = page.getByRole("complementary", { name: "Work Map details" });
@@ -169,6 +178,28 @@ test("the protected Work Map starts at the portfolio and follows epic delivery a
   await expect(release).toHaveAttribute("aria-expanded", "false");
   await expect(packaging).toHaveAttribute("aria-expanded", "false");
   await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
+});
+
+test("Compare projects filters real bead memberships and opens the project inspector", async ({
+  page,
+}) => {
+  seedWorkMap();
+  await openSettled(page, "/index.html#/desktop/work-map");
+  await page.getByRole("button", { name: "Compare projects" }).click();
+  const chart = page.getByRole("region", { name: "Project status comparison" });
+  const alphaRow = chart.getByRole("button", { name: new RegExp(alpha.name) });
+  const betaRow = chart.getByRole("button", { name: new RegExp(beta.name) });
+  await page.getByLabel("Search Work Map").fill("map-cleanup");
+  await expect(alphaRow).toContainText("1 matching bead");
+  await expect(alphaRow).toContainText("Completed 1");
+  await expect(betaRow).toContainText("0 matching beads");
+  await alphaRow.press("Enter");
+  await expect(alphaRow).toHaveAttribute("aria-pressed", "true");
+  const details = page.getByRole("complementary", { name: "Work Map details" });
+  await expect(
+    details.getByRole("heading", { name: alpha.name, exact: true }),
+  ).toBeFocused();
+  await expect(details.getByText(result, { exact: true })).toBeVisible();
 });
 
 test("epic expansion keeps lines attached, reverses in place and honors reduced motion", async ({

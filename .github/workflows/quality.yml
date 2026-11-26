@@ -170,6 +170,14 @@ jobs:
           name: desktop-playwright-test-results-${{ matrix.shard }}
           path: .work/desktop/test-results/
           retention-days: 14
+      - name: Upload project visualization evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-project-charts-${{ matrix.shard }}
+          path: .work/desktop/.tmp/screenshots/forge-desktop/*.png
+          if-no-files-found: ignore
+          retention-days: 14
       # Upload only the controlled visualization fixtures; no local GUI capture is required.
       - name: Upload Beads work-map screenshots
         if: always()
@@ -186,6 +194,20 @@ jobs:
           name: hearth-log-${{ matrix.shard }}
           path: .work/desktop/test-results/hearth-log-evidence/*.png
           if-no-files-found: ignore
+          retention-days: 14
+      - name: Exercise the built Forge Lite visualization app
+        if: matrix.shard == 2
+        timeout-minutes: 4
+        run: bun run verify:lite
+      - name: Upload Lite visualization evidence
+        if: always() && matrix.shard == 2
+        uses: actions/upload-artifact@v4
+        with:
+          name: forge-lite-visualizations
+          path: |
+            .work/desktop/.tmp/screenshots/forge-lite/*.png
+            .work/desktop/test-results/lite/**/trace.zip
+          if-no-files-found: warn
           retention-days: 14
       - name: Qualify MCP integration UI negative controls
         if: matrix.shard == 1

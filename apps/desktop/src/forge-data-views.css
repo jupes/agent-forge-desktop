@@ -1,0 +1,278 @@
+.af-forge-throughput,
+.af-forge-phases {
+  --forge-chart-ink: var(--desktop-text, var(--color-text));
+  --forge-chart-muted: var(--desktop-muted, var(--color-neutral-400));
+  --forge-chart-grid: var(--desktop-divider, var(--color-divider));
+  --forge-chart-metal: var(--desktop-accent, var(--color-accent-300));
+  --forge-chart-ember: var(--desktop-warning, #bf8848);
+  color: var(--forge-chart-ink);
+}
+
+.af-forge-throughput {
+  margin: 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.af-forge-throughput figcaption,
+.af-forge-x-axis {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  flex-wrap: wrap;
+}
+
+.af-forge-throughput figcaption {
+  font-size: 0.82rem;
+  margin-block: 0.75rem 1.25rem;
+}
+
+.af-forge-throughput :where(figcaption) strong {
+  font: inherit;
+  font-size: clamp(1.65rem, 3vw, 2.4rem);
+  font-weight: 600;
+  letter-spacing: -0.045em;
+  line-height: 1;
+  margin-inline-end: 0.15rem;
+}
+
+.af-forge-series {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.45rem 0.65rem;
+}
+
+.af-forge-y-axis,
+.af-forge-x-axis {
+  color: var(--forge-chart-muted);
+  font-size: 0.72rem;
+}
+
+.af-forge-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: end;
+  line-height: 1;
+}
+
+.af-forge-x-axis {
+  grid-column: 2;
+}
+
+.af-forge-plot {
+  position: relative;
+  min-height: 7rem;
+  isolation: isolate;
+  border-block: 1px solid var(--forge-chart-grid);
+  background: repeating-linear-gradient(
+    to top,
+    transparent 0 calc(50% - 1px),
+    var(--forge-chart-grid) calc(50% - 1px) 50%
+  );
+}
+
+.af-forge-bins {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.af-forge-bin {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-inline: min(0.2rem, .4%);
+}
+
+.af-forge-bin i {
+  display: block;
+  height: 100%;
+  background: var(--forge-chart-metal);
+  transform-origin: bottom;
+  border-radius: 2px 2px 0 0;
+}
+
+.af-forge-bin[data-selected="true"] i {
+  background: var(--forge-chart-ember);
+}
+
+.af-forge-day-cursor {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--forge-chart-ember) 12%, transparent);
+  border-block-end: 2px solid var(--forge-chart-ember);
+}
+
+.af-forge-plot input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+}
+
+.af-forge-plot:has(input:focus-visible),
+.af-forge-throughput summary:focus-visible {
+  outline: 2px solid var(--forge-chart-metal);
+  outline-offset: 3px;
+}
+
+.af-forge-throughput details {
+  margin-top: 0.8rem;
+  font-size: 0.8rem;
+}
+
+.af-forge-throughput summary {
+  width: fit-content;
+  cursor: pointer;
+  min-height: 1.6rem;
+  color: var(--forge-chart-muted);
+}
+
+.af-forge-throughput table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.af-forge-throughput :is(th, td) {
+  border-bottom: 1px solid var(--forge-chart-grid);
+  padding: 0.35rem 0.5rem;
+  text-align: start;
+}
+
+.af-forge-throughput tr > :last-child {
+  text-align: end;
+}
+
+.af-forge-throughput tbody th {
+  font-weight: normal;
+}
+
+.af-forge-throughput tr[data-selected="true"] {
+  background: color-mix(in srgb, var(--forge-chart-ember) 12%, transparent);
+  box-shadow: inset 2px 0 var(--forge-chart-ember);
+}
+
+.af-forge-phases {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  list-style: none;
+  padding: 0;
+  margin: 0.65rem 0 1rem;
+}
+
+.af-forge-phases li {
+  --phase-metal: var(--forge-chart-grid);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.af-forge-phases li::before {
+  content: "";
+  position: absolute;
+  inset: 0.35rem 0 auto 0.72rem;
+  height: 2px;
+  background: var(--phase-metal);
+}
+
+.af-forge-phases li:last-child::before {
+  display: none;
+}
+
+.af-forge-phases i {
+  box-sizing: border-box;
+  height: 0.76rem;
+  width: 0.76rem;
+  margin-bottom: 0.28rem;
+  border: 2px solid var(--phase-metal);
+  border-radius: 50%;
+}
+
+.af-forge-phases strong {
+  font-weight: 550;
+  text-transform: capitalize;
+}
+
+.af-forge-phases small {
+  color: var(--forge-chart-muted);
+  font-size: 0.7rem;
+}
+
+.af-forge-phases [data-state="Complete"] {
+  --phase-metal: var(--forge-chart-metal);
+}
+
+.af-forge-phases [data-state="Complete"] i {
+  background: var(--phase-metal);
+}
+
+.af-forge-phases
+  :is([data-state="Current"], [data-state="Review"], [data-state="Revision"]) {
+  --phase-metal: var(--forge-chart-ember);
+}
+
+.af-forge-phases
+  :is([data-state="Current"], [data-state="Review"], [data-state="Revision"])
+  i {
+  transform: rotate(45deg) scale(0.85);
+  border-radius: 2px;
+  background: var(--phase-metal);
+}
+
+.af-forge-phases [data-state="Halted"] {
+  --phase-metal: var(--desktop-danger, #ca7366);
+}
+
+.af-forge-phases [data-state="Halted"] i {
+  border-radius: 2px;
+  border-style: double;
+  border-width: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .af-forge-bin i {
+    transition:
+      transform 280ms ease-out,
+      background-color 160ms ease;
+  }
+  .af-forge-day-cursor {
+    transition: transform 120ms ease-out;
+  }
+  .af-forge-phases i,
+  .af-forge-phases li::before {
+    transition:
+      background-color 220ms ease,
+      border-color 220ms ease,
+      transform 220ms ease,
+      border-radius 220ms ease;
+  }
+}
+
+@media (forced-colors: active) {
+  .af-forge-bin i,
+  .af-forge-phases li::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+  .af-forge-bin[data-selected="true"] i,
+  .af-forge-phases [data-state="Complete"] i {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+  .af-forge-day-cursor {
+    border-block-end-color: Highlight;
+  }
+}

@@ -2,13 +2,18 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "preact/hooks";
 import { Button } from "../../../docs/js/ds/Button";
 import { visibleWindow } from "../../../docs/js/timeline-model";
 import { projectActivityFiltersSchema } from "../../../scripts/projects/activity-protocol";
-import type { ProjectActivityFilters } from "../../../types/project-activity";
+import type { LedgerEventKind } from "../../../types/hearth";
+import type {
+  ProjectActivityEvent,
+  ProjectActivityFilters,
+} from "../../../types/project-activity";
 import { desktopHref } from "./navigation";
 import {
   ACTIVITY_GROUPS,
@@ -32,6 +37,79 @@ const label = (key: string) =>
   key
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .replace(/^./, (value) => value.toUpperCase());
+
+const kindGroups = new Map(
+  ACTIVITY_GROUPS.flatMap((group) =>
+    group.kinds.map((kind) => [kind, group] as const),
+  ),
+);
+
+function ActivityDistribution({
+  events,
+  filters,
+  apply,
+}: {
+  events: readonly ProjectActivityEvent[];
+  filters: ProjectActivityFilters;
+  apply(filters: ProjectActivityFilters): void;
+}) {
+  const groups = useMemo(() => {
+    const counts = new Map<
+      string,
+      { label: string; kinds: LedgerEventKind[]; count: number }
+    >();
+    for (const { kind } of events) {
+      const group = kindGroups.get(kind);
+      const id = group?.id ?? kind;
+      const counted = counts.get(id);
+      if (counted) counted.count++;
+      else
+        counts.set(id, {
+          label: group?.label ?? kind,
+          kinds: group?.kinds ?? [kind],
+          count: 1,
+        });
+    }
+    return [...counts.values()].sort(
+      (a, b) => b.count - a.count || a.label.localeCompare(b.label),
+    );
+  }, [events]);
+  const peak = groups[0]?.count ?? 1;
+  return (
+    <section
+      class="af-activity-distribution"
+      aria-label="Loaded events by kind"
+    >
+      <h3>Loaded events by kind</h3>
+      <div>
+        {groups.map((group) => {
+          const chosen =
+            group.kinds.length === filters.kinds.length &&
+            group.kinds.every((kind) => filters.kinds.includes(kind));
+          return (
+            <button
+              type="button"
+              key={group.label}
+              aria-pressed={chosen}
+              aria-label={`${group.label}, ${group.count.toLocaleString()} loaded`}
+              onClick={() =>
+                apply({ ...filters, kinds: chosen ? [] : group.kinds })
+              }
+            >
+              <span>
+                <span>{group.label}</span>
+                <strong>{group.count.toLocaleString()}</strong>
+              </span>
+              <i aria-hidden="true">
+                <b style={{ transform: `scaleX(${group.count / peak})` }} />
+              </i>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 export function ProjectActivityFeed({
   controller,
@@ -221,6 +299,17 @@ export function ProjectActivityFeed({
           {problem}
         </p>
       ))}
+      {!embedded &&
+        !filterError &&
+        filters &&
+        view?.loaded &&
+        view.events.length > 0 && (
+          <ActivityDistribution
+            events={view.events}
+            filters={filters}
+            apply={apply}
+          />
+        )}
       {!filterError &&
         (!view?.loaded && !view?.error ? (
           <div

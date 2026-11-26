@@ -292,6 +292,22 @@
   background: var(--portfolio-soft);
 }
 
+.af-portfolio-completion {
+  position: absolute;
+  inset: auto 9px 2px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--portfolio-border);
+}
+
+.af-portfolio-completion i {
+  display: block;
+  height: 100%;
+  background: var(--portfolio-success);
+  transform-origin: left center;
+}
+
 .af-portfolio-node[data-kind="bead"] {
   border-radius: 50%;
   padding: 0;
@@ -540,7 +556,147 @@
   outline-offset: 2px;
 }
 
+.af-portfolio-node[data-neighbor="true"]:not([aria-pressed="true"]) {
+  box-shadow: 0 0 0 1.5px var(--portfolio-warning);
+}
+
+.af-portfolio-node[data-neighbor="false"]:not([aria-pressed="true"]) {
+  border-color: var(--portfolio-border);
+}
+
+.af-project-chart {
+  padding: clamp(12px, 2.2vw, 26px);
+  font-variant-numeric: tabular-nums;
+}
+
+.af-project-chart h2 {
+  margin: 0;
+  font-size: 1.16rem;
+}
+
+.af-project-chart p,
+.af-project-chart-axis,
+.af-project-chart-values {
+  color: var(--portfolio-muted);
+  font-size: 0.8rem;
+}
+
+.af-project-chart p {
+  margin: 6px 0 18px;
+}
+
+.af-project-chart-axis,
+.af-project-chart-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.af-project-chart-axis {
+  margin-inline: 10px;
+  border-bottom: 1px solid var(--portfolio-border);
+}
+
+.af-project-chart ul {
+  padding: 0;
+  margin: 4px 0 0;
+  list-style: none;
+}
+
+.af-project-chart-row {
+  display: grid;
+  width: 100%;
+  text-align: start;
+  gap: 7px;
+  padding: 12px 9px;
+  background: transparent;
+  color: var(--portfolio-text);
+  border: 1px solid transparent;
+  border-bottom-color: var(--portfolio-border);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.af-project-chart-row:is(:hover, [aria-pressed="true"]) {
+  background: var(--portfolio-soft);
+}
+
+.af-project-chart-row[aria-pressed="true"] {
+  border-inline-start-color: var(--portfolio-warning);
+}
+
+.af-project-chart-title > strong {
+  overflow-wrap: anywhere;
+}
+
+.af-project-chart-title > span {
+  flex-shrink: 0;
+  color: var(--portfolio-muted);
+  font-size: 0.8rem;
+}
+
+.af-project-chart-track {
+  display: flex;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    120deg,
+    transparent 0 5px,
+    var(--portfolio-border) 5px 6px
+  );
+}
+
+.af-project-chart [data-state] {
+  --ink: var(--portfolio-muted);
+}
+.af-project-chart [data-state="working"] {
+  --ink: var(--portfolio-warning);
+}
+.af-project-chart [data-state="in_progress"] {
+  --ink: var(--portfolio-info);
+}
+.af-project-chart [data-state="ready"] {
+  --ink: var(--portfolio-accent);
+}
+.af-project-chart [data-state="blocked"] {
+  --ink: var(--desktop-danger, #eb8e87);
+}
+.af-project-chart [data-state="completed"] {
+  --ink: var(--portfolio-success);
+}
+.af-project-chart [data-state="other"] {
+  --ink: var(--portfolio-border);
+}
+.af-project-chart-track > span {
+  background-color: var(--ink);
+}
+.af-project-chart-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+}
+.af-project-chart-values:empty {
+  display: none;
+}
+.af-project-chart-values i {
+  color: var(--ink);
+  font-style: normal;
+  margin-inline-end: 4px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
+  .af-portfolio-completion i {
+    transition: transform 220ms ease-out;
+  }
+  .af-project-chart-track > span {
+    transition: width 220ms ease-out;
+  }
+  .af-project-chart-row {
+    transition: background-color 130ms ease-out;
+  }
   .af-portfolio-node {
     transition:
       border-color 120ms ease-out,
