@@ -148,6 +148,24 @@ async function installReader(
 
 const screenshots = ".tmp/screenshots/forge-lite";
 
+function textContrast(button: Locator) {
+  return button.evaluate((element) => {
+    const luminance = (css: string) => {
+      const rgb = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(css);
+      if (!rgb) throw Error(`Expected an opaque sRGB color, read ${css}`);
+      const [r, g, b] = rgb.slice(1).map((channel) => {
+        const c = Number(channel) / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+    };
+    const style = getComputedStyle(element);
+    const ink = luminance(style.color);
+    const surface = luminance(style.backgroundColor);
+    return (Math.max(ink, surface) + 0.05) / (Math.min(ink, surface) + 0.05);
+  });
+}
+
 function fitGeometry(graph: Locator) {
   return graph.evaluate((viewport) => {
     const view = viewport.getBoundingClientRect();
@@ -227,9 +245,8 @@ test("opens the portfolio, follows project work and compares projects without is
     name: /^forge-12, Arrange the workstations/,
   });
   await expect(working).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Back to center" }),
-  ).toBeVisible();
+  const recenter = page.getByRole("button", { name: "Back to center" });
+  await expect(recenter).toBeVisible();
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   if (info.project.name === "narrow") {
     await expect(async () => {
@@ -252,11 +269,16 @@ test("opens the portfolio, follows project work and compares projects without is
     await expect
       .poll(async () => (await fitGeometry(graph)).centerError)
       .toBeGreaterThan(10);
-    await page.getByRole("button", { name: "Back to center" }).click();
+    await recenter.click();
     await expect
       .poll(async () => (await fitGeometry(graph)).centerError)
       .toBeLessThan(3);
   }
+  await recenter.hover();
+  await recenter.evaluate(async (button) => {
+    await Promise.all(button.getAnimations().map((effect) => effect.finished));
+  });
+  expect(await textContrast(recenter)).toBeGreaterThanOrEqual(4.5);
   await expect
     .poll(() =>
       page.evaluate(

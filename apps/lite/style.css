@@ -37,6 +37,7 @@ body {
   background: var(--lite-base);
 }
 .af-lite {
+  --color-text: var(--lite-ink);
   --desktop-card-surface: var(--lite-surface);
   --desktop-canvas-surface: var(--lite-canvas);
   --desktop-canvas-grid: var(--lite-grid);
