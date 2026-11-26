@@ -42,6 +42,7 @@ const states = {
 const filters = ["all", ...Object.keys(states)] as readonly PortfolioFilter[];
 
 export interface PortfolioWorkMapProps {
+  defaultProjectId?: string | undefined;
   data: ProjectWorkMap | null;
   loading: boolean;
   error: string | null;
@@ -79,6 +80,7 @@ export function PortfolioWorkMap({ data, ...props }: PortfolioWorkMapProps) {
 
 function PortfolioView({
   data,
+  defaultProjectId,
   loading,
   error,
   onRefresh,
@@ -192,6 +194,11 @@ function PortfolioView({
           </p>
         </div>
         <div class="af-portfolio-heading-actions">
+          {defaultProjectId && (
+            <Button onClick={() => onOpenProject(defaultProjectId)}>
+              Open Default workspace
+            </Button>
+          )}
           {readTime && (
             <span>
               Read <time dateTime={data.asOf}>{readTime}</time>

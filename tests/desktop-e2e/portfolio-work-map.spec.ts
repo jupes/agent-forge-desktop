@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import {
   readState,
@@ -7,7 +8,14 @@ import {
 } from "../e2e/bd-stand-in-state";
 import { openSettled } from "../e2e/fixtures";
 import { BD_STAND_IN_STATE } from "../e2e/servers";
-import { alpha, beta, seedProjects } from "./project-fixtures";
+import {
+  alpha,
+  beta,
+  catalog,
+  catalogFile,
+  seedProjects,
+  workspace,
+} from "./project-fixtures";
 
 const mapPath = "/__agent-forge/projects/work-map";
 const result = "Verified that uninstall removes the app's own files.";
@@ -230,4 +238,109 @@ test("left-click drag pans the Work Map without opening a node", async ({
   await page.mouse.up();
   await expect(release).toHaveAttribute("aria-expanded", "true");
   await expect(release).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Default prepares a session with references across projects and an explicit Beads export", async ({
+  page,
+}) => {
+  seedWorkMap();
+  const defaultProject = {
+    ...alpha,
+    id: "project-6f45aa26-3f21-42d6-978d-1fa0d14ee8fb",
+    slug: "default",
+    name: "Default",
+    workspaces: [
+      { root: workspace, repositories: [workspace], epicIds: ["default-epic"] },
+    ],
+  };
+  writeFileSync(
+    catalogFile,
+    JSON.stringify({
+      ...catalog,
+      projects: [...catalog.projects, defaultProject],
+    }),
+  );
+  withStateLock(BD_STAND_IN_STATE, () => {
+    const state = readState(BD_STAND_IN_STATE);
+    writeState(BD_STAND_IN_STATE, {
+      ...state,
+      "default-epic": {
+        ...state["alpha-epic"]!,
+        id: "default-epic",
+        title: "Cross-project work",
+        labels: ["project:default"],
+      },
+    });
+  });
+  const trackerBefore = readState(BD_STAND_IN_STATE);
+  const projectPath = `/index.html#/desktop/project/${defaultProject.id}`;
+  await openSettled(page, `${projectPath}/sessions`);
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST")
+      writes.push(new URL(request.url()).pathname);
+  });
+  await page.getByRole("button", { name: "New session", exact: true }).click();
+  const composer = page.getByRole("dialog", { name: "New session · Default" });
+  const prompt = composer.getByRole("textbox", { name: "Session prompt" });
+  const ownPrompt = "Keep this existing user prompt.";
+  await prompt.fill(ownPrompt);
+  await composer.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  await openSettled(page, `${projectPath}/overview`);
+  const context = page.getByRole("region", { name: "Cross-project context" });
+  const savedProjects = context.getByRole("group", { name: "Saved projects" });
+  await savedProjects.getByRole("checkbox", { name: /^Alpha\b/ }).check();
+  await savedProjects.getByRole("checkbox", { name: /^Beta\b/ }).check();
+  const beads = context.getByRole("group", { name: "Local beads" });
+  await beads.getByRole("checkbox", { name: /^map-installer\b/ }).check();
+  await beads.getByRole("checkbox", { name: /^map-runtime\b/ }).check();
+  await context
+    .getByRole("group", { name: "Repository references" })
+    .getByRole("checkbox", { name: workspace, exact: true })
+    .check();
+
+  const privateBody = "Private imported body stays in the export.";
+  await context.getByLabel("Choose Beads JSONL exports").setInputFiles({
+    name: "other-tracker.jsonl",
+    mimeType: "application/jsonl",
+    buffer: Buffer.from(
+      `${JSON.stringify({
+        id: "external-17",
+        title: "Imported follow-up",
+        status: "open",
+        description: privateBody,
+      })}\n`,
+    ),
+  });
+  await context.getByRole("checkbox", { name: /^external-17\b/ }).check();
+  const draft = await context
+    .getByRole("textbox", { name: "Draft context" })
+    .inputValue();
+  for (const reference of [
+    defaultProject.id,
+    alpha.id,
+    beta.id,
+    "map-installer",
+    "map-runtime",
+    workspace,
+    "external-17",
+    "other-tracker.jsonl",
+  ]) {
+    expect(draft).toContain(reference);
+  }
+  expect(draft).not.toContain(privateBody);
+
+  await context
+    .getByRole("button", { name: "Prepare session", exact: true })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/desktop/project/${defaultProject.id}/overview$`),
+  );
+  await expect(composer).toBeVisible();
+  const prepared = await prompt.inputValue();
+  expect(prepared).toContain(ownPrompt);
+  expect(prepared).toContain(draft);
+  expect(writes).toEqual([]);
+  expect(readState(BD_STAND_IN_STATE)).toEqual(trackerBefore);
 });

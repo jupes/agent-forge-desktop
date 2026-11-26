@@ -24,6 +24,7 @@ import { AppUpdatesSettings } from "./AppUpdatesSettings";
 import { BeadWriteNotices, NewBeadForm } from "./BeadWrites";
 import { CommandPalette } from "./CommandPalette";
 import { ConnectionBanner, useDesktopRecovery } from "./ConnectionBanner";
+import { CrossProjectContext } from "./CrossProjectContext";
 import { useChatDecisionOwners } from "./chat-decision-owners";
 import {
   appendPaletteRows,
@@ -451,7 +452,6 @@ function DesktopContent({
     (recovery?.connection.writesAllowed ?? false) && sessionWindowCurrent;
   const appearance = useAppAppearance(connectionWritable);
   const projects = useProjects();
-  const workMap = useProjectWorkMap(route.destination === "work-map");
   const projectGeneralSettings = useProjectGeneralSettings(
     projects.refreshProjectHome,
   );
@@ -502,6 +502,11 @@ function DesktopContent({
   );
   const project = settingsCatalog?.projects.find(
     (item) => item.id === route.projectId,
+  );
+  const defaultOverview =
+    route.destination === "overview" && project?.slug === "default";
+  const workMap = useProjectWorkMap(
+    route.destination === "work-map" || defaultOverview,
   );
   useEffect(() => {
     if (settingsCatalog && route.projectId)
@@ -2980,6 +2985,36 @@ function DesktopContent({
     if (beadId) sessions.editComposer(project.id, { beadId });
     setComposerOpen(true);
   };
+  const prepareCrossProjectSession = (context: string): string | null => {
+    if (
+      !defaultOverview ||
+      !project ||
+      project.archived ||
+      !writesAllowed ||
+      projects.held ||
+      projects.error ||
+      !sameDesktopRoute(route, desktopRoute(window.location.hash))
+    )
+      return "Reopen the active Default workspace to prepare a session.";
+    const view = sessions.project(project.id);
+    const hold = forgeRunPreparationHold(view, sessions.currentIdentityScope());
+    if (hold) return hold;
+    const existing = view.composer.prompt;
+    const prompt =
+      existing === context || existing.endsWith(`\n\n${context}`)
+        ? existing
+        : [existing, context].filter(Boolean).join("\n\n");
+    if (prompt.length > 16_384)
+      return "The current prompt and selected references exceed 16,384 characters. Shorten the draft or select fewer references.";
+    sessions.prepareComposerDefaults(project);
+    sessions.editComposer(project.id, { prompt });
+    composerOpener.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setComposerOpen(true);
+    return null;
+  };
   const continueToChat = (
     handoffSummary: string,
     sourceSessionId: string,
@@ -4167,6 +4202,11 @@ function DesktopContent({
           />
         ) : route.destination === "work-map" ? (
           <PortfolioWorkMap
+            defaultProjectId={
+              settingsCatalog?.projects.find(
+                (item) => item.slug === "default" && !item.archived,
+              )?.id
+            }
             data={workMap.data}
             error={workMap.error}
             loading={workMap.loading}
@@ -4542,23 +4582,43 @@ function DesktopContent({
             }}
           />
         ) : route.destination === "overview" && project ? (
-          <ProjectOverview
-            providers={providers.data}
-            providerStale={providers.stale}
-            key={project.id}
-            projectId={project.id}
-            keeper={keeper}
-            onboardingRequestId={
-              finishBrief?.projectId === project.id
-                ? finishBrief.requestId
-                : undefined
-            }
-            onFinishFirstBrief={(requestId) =>
-              setFinishBrief((current) =>
-                current?.requestId === requestId ? null : current,
-              )
-            }
-          />
+          <>
+            {defaultOverview && settingsCatalog && (
+              <CrossProjectContext
+                project={project}
+                catalog={settingsCatalog.projects}
+                map={workMap.data}
+                error={workMap.error}
+                loading={workMap.loading}
+                workspace={summary?.workspace ?? ""}
+                onRefresh={workMap.reload}
+                canPrepare={
+                  writesAllowed &&
+                  !project.archived &&
+                  !projects.held &&
+                  !projects.error
+                }
+                onPrepare={prepareCrossProjectSession}
+              />
+            )}
+            <ProjectOverview
+              providers={providers.data}
+              providerStale={providers.stale}
+              key={project.id}
+              projectId={project.id}
+              keeper={keeper}
+              onboardingRequestId={
+                finishBrief?.projectId === project.id
+                  ? finishBrief.requestId
+                  : undefined
+              }
+              onFinishFirstBrief={(requestId) =>
+                setFinishBrief((current) =>
+                  current?.requestId === requestId ? null : current,
+                )
+              }
+            />
+          </>
         ) : route.destination === "sessions" &&
           project &&
           selectedSession &&
