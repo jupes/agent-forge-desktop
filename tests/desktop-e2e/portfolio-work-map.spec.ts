@@ -164,10 +164,119 @@ test("the protected Work Map starts at the portfolio and follows epic delivery a
   await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
 });
 
+test("epic expansion keeps lines attached, reverses in place and honors reduced motion", async ({
+  page,
+}) => {
+  seedWorkMap();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.clock.install();
+  await openSettled(page, "/index.html#/desktop/work-map");
+  const graph = page.getByRole("group", { name: "Portfolio graph" });
+  const you = graph.getByRole("button", { name: "You", exact: true });
+  const epic = graph.getByRole("button", { name: "Release fixes, epic" });
+  const cleanup = graph.getByRole("button", { name: /^map-cleanup,/ });
+  await expect(epic).toBeInViewport();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+
+  const branch = () =>
+    graph.evaluate((viewport) => {
+      const epic = viewport.querySelector('[aria-label="Release fixes, epic"]');
+      const bead = viewport.querySelector('[aria-label^="map-cleanup,"]');
+      const canvas = viewport.parentElement?.querySelector("canvas");
+      const ctx = canvas?.getContext("2d");
+      if (!epic || !bead || !canvas || !ctx)
+        throw Error("Expected a rendered epic, bead and connection canvas");
+      const bounds = canvas.getBoundingClientRect();
+      const center = (el: Element) => {
+        const box = el.getBoundingClientRect();
+        return {
+          x: box.x + box.width / 2 - bounds.x,
+          y: box.y + box.height / 2 - bounds.y,
+        };
+      };
+      const from = center(epic);
+      const to = center(bead);
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      // Read the rendered membership line near both ends at this exact frame.
+      const connected = [0.25, 0.75].every((part) => {
+        const x = Math.round(
+          ((from.x + dx * part) * canvas.width) / bounds.width,
+        );
+        const y = Math.round(
+          ((from.y + dy * part) * canvas.height) / bounds.height,
+        );
+        return ctx
+          .getImageData(x - 1, y - 1, 3, 3)
+          .data.some((value, i) => i % 4 === 3 && value > 0);
+      });
+      return { distance: Math.hypot(dx, dy), connected };
+    });
+
+  try {
+    await epic.press("Enter");
+    await page.clock.runFor(64);
+    const opening = await branch();
+    expect(opening.connected).toBe(true);
+    expect(opening.distance).toBeGreaterThan(1);
+    await page.clock.runFor(500);
+    const expanded = await branch();
+    expect(expanded.connected).toBe(true);
+    expect(expanded.distance).toBeGreaterThan(opening.distance + 1);
+
+    await you.press("Enter");
+    await page.clock.runFor(64);
+    await expect(cleanup).toHaveCount(0);
+    const closing = await branch();
+    expect(closing.distance).toBeGreaterThan(1);
+    expect(closing.distance).toBeLessThan(expanded.distance - 1);
+    await epic.press("Enter");
+    expect((await branch()).distance).toBeCloseTo(closing.distance, 0);
+    await page.clock.runFor(500);
+    expect((await branch()).distance).toBeCloseTo(expanded.distance, 0);
+    await expect(cleanup).toHaveCount(1);
+
+    const scale = page.getByRole("group", { name: "Graph scale" });
+    const zoomIn = scale.getByRole("button", { name: "Zoom in" });
+    const ownerWidth = () =>
+      you.evaluate((button) => button.getBoundingClientRect().width);
+    const fitted = await ownerWidth();
+    await zoomIn.press("Enter");
+    await page.clock.runFor(64);
+    const midZoom = await ownerWidth();
+    expect(midZoom).toBeGreaterThan(fitted);
+    await scale
+      .getByRole("button", { name: "Fit", exact: true })
+      .press("Enter");
+    await page.clock.runFor(500);
+    expect(await ownerWidth()).toBeCloseTo(fitted, 1);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.clock.runFor(32);
+    await you.press("Enter");
+    await page.clock.runFor(16);
+    await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
+    await epic.press("Enter");
+    await page.clock.runFor(16);
+    const reduced = await branch();
+    expect(reduced.distance).toBeCloseTo(expanded.distance, 0);
+    expect(reduced.connected).toBe(true);
+    await zoomIn.press("Enter");
+    await page.clock.runFor(16);
+    const reducedZoom = await ownerWidth();
+    expect(reducedZoom).toBeGreaterThan(midZoom);
+    await page.clock.runFor(500);
+    expect(await ownerWidth()).toBeCloseTo(reducedZoom, 1);
+  } finally {
+    await page.clock.resume();
+  }
+});
+
 test("left-click drag pans the Work Map without opening a node", async ({
   page,
 }) => {
   seedWorkMap();
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await openSettled(page, "/index.html#/desktop/work-map");
   const graph = page.getByRole("group", { name: "Portfolio graph" });
   const you = graph.getByRole("button", { name: "You", exact: true });

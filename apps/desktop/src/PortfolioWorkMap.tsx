@@ -24,6 +24,12 @@ import {
   projectNodeKey,
   type WorkMapState,
 } from "./portfolio-work-map-model";
+import {
+  type GraphFrame,
+  useCameraMotion,
+  useGraphMotion,
+  useReducedMotion,
+} from "./portfolio-work-map-motion";
 import "./portfolio-work-map.css";
 
 type MapModel = ReturnType<typeof buildPortfolioMap>;
@@ -94,6 +100,7 @@ function PortfolioView({
   const [expanded, setExpanded] = useState(new Map<string, number>());
   const [limit, setLimit] = useState(PORTFOLIO_PAGE_SIZE);
   const [fitRequest, requestFit] = useState(0);
+  const detailPanel = useRef<HTMLElement>(null);
   const detailTitle = useRef<HTMLHeadingElement>(null);
   const searchId = useId();
   const model = useMemo(() => buildPortfolioMap(data), [data]);
@@ -148,6 +155,8 @@ function PortfolioView({
     });
   };
   const select = (node: PortfolioNode, focusDetails = false) => {
+    if (node.key !== selected.key && detailPanel.current)
+      detailPanel.current.scrollTop = 0;
     setSelectedKey(node.key);
     if (node.kind === "owner") {
       setExpanded(new Map());
@@ -302,6 +311,7 @@ function PortfolioView({
               {view === "graph" ? (
                 <PortfolioCanvas
                   graph={graph}
+                  snapshot={data}
                   selected={selected}
                   expanded={expanded}
                   highlighted={highlighted}
@@ -359,7 +369,11 @@ function PortfolioView({
                 </span>
               </footer>
             </div>
-            <aside class="af-portfolio-details" aria-label="Work Map details">
+            <aside
+              ref={detailPanel}
+              class="af-portfolio-details"
+              aria-label="Work Map details"
+            >
               <div class="af-portfolio-path">
                 {portfolioPath(model, selected.key)
                   .slice(0, -1)
@@ -374,7 +388,7 @@ function PortfolioView({
                   ))}
               </div>
               <h2 ref={detailTitle} tabIndex={-1}>
-                {selected.title}
+                <span key={selected.key}>{selected.title}</span>
               </h2>
               {isPortfolioBead(selected) && (
                 <div class="af-portfolio-detail-state">
@@ -726,6 +740,7 @@ function graphNodeLabel(node: PortfolioNode) {
 
 function PortfolioCanvas({
   graph,
+  snapshot,
   selected,
   expanded,
   highlighted,
@@ -733,6 +748,7 @@ function PortfolioCanvas({
   onSelect,
 }: {
   graph: PortfolioGraph;
+  snapshot: ProjectWorkMap;
   selected: PortfolioNode;
   expanded: ReadonlyMap<string, number>;
   highlighted: ReadonlySet<string> | null;
@@ -743,7 +759,13 @@ function PortfolioCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previousMargins = useRef({ x: 0, y: 0 });
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [zoom, setZoom] = useState(1);
+  const reducedMotion = useReducedMotion();
+  const frame = useGraphMotion(graph, snapshot, reducedMotion);
+  const { camera, requestedZoom, fly, interrupt } =
+    useCameraMotion(reducedMotion);
+  const lastCamera = useRef(camera);
+  const lastFitRequest = useRef(fitRequest);
+  const redraw = useRef<() => void>(() => {});
   const [panning, setPanning] = useState(false);
   const drag = useRef<{
     pointerId: number;
@@ -754,23 +776,28 @@ function PortfolioCanvas({
     moved: boolean;
   } | null>(null);
   const fitScale = Math.min(
+    size.width / frame.width,
+    size.height / frame.height,
+    1,
+  );
+  const scale = fitScale * camera.zoom;
+  const targetFit = Math.min(
     size.width / graph.width,
     size.height / graph.height,
     1,
   );
-  const scale = fitScale * zoom;
-  const nativeZoom = fitScale ? 1 / fitScale : 1;
+  const nativeZoom = targetFit ? 1 / targetFit : 1;
   const maxZoom = Math.max(4, nativeZoom * 1.5);
-  const stageWidth = Math.max(size.width, Math.ceil(scale * graph.width));
-  const stageHeight = Math.max(size.height, Math.ceil(scale * graph.height));
+  const stageWidth = Math.max(size.width, Math.ceil(scale * frame.width));
+  const stageHeight = Math.max(size.height, Math.ceil(scale * frame.height));
   // Leave scroll room on both sides even when the whole graph fits.
   const marginX = Math.floor(size.width / 2);
   const marginY = Math.floor(size.height / 2);
-  const originX = marginX + (stageWidth - scale * graph.width) / 2;
-  const originY = marginY + (stageHeight - scale * graph.height) / 2;
+  const originX = marginX + (stageWidth - scale * frame.width) / 2;
+  const originY = marginY + (stageHeight - scale * frame.height) / 2;
   const layout = useMemo(
-    () => new Map(graph.nodes.map((entry) => [entry.node.key, entry])),
-    [graph],
+    () => new Map(frame.nodes.map((entry) => [entry.node.key, entry])),
+    [frame],
   );
 
   useEffect(() => {
@@ -795,67 +822,66 @@ function PortfolioCanvas({
     previousMargins.current = { x: marginX, y: marginY };
   }, [marginX, marginY]);
 
-  useEffect(() => {
-    setZoom(1);
-    const viewport = viewportRef.current;
-    const { x, y } = previousMargins.current;
-    viewport?.scrollTo(x, y);
-  }, [fitRequest]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const canvas = canvasRef.current;
     if (!viewport || !canvas || !scale) return;
-    let frame = 0;
-    const schedule = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() =>
-        drawConnections(
-          canvas,
-          graph,
-          layout,
-          selected.key,
-          scale,
-          originX - viewport.scrollLeft,
-          originY - viewport.scrollTop,
-        ),
+    if (camera !== lastCamera.current) {
+      lastCamera.current = camera;
+      viewport.scrollTo(
+        originX + camera.x * frame.width * scale - size.width / 2,
+        originY + camera.y * frame.height * scale - size.height / 2,
       );
-    };
-    schedule();
-    viewport.addEventListener("scroll", schedule, { passive: true });
-    const theme = new MutationObserver(schedule);
+    }
+    redraw.current = () =>
+      drawConnections(
+        canvas,
+        frame,
+        layout,
+        selected.key,
+        scale,
+        originX - viewport.scrollLeft,
+        originY - viewport.scrollTop,
+      );
+    // Lines and buttons consume the same frame before the browser paints.
+    redraw.current();
+  }, [frame, layout, camera, size, selected.key, scale, originX, originY]);
+
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const draw = () => redraw.current();
+    viewport.addEventListener("scroll", draw, { passive: true });
+    const theme = new MutationObserver(draw);
     theme.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-af-theme", "class"],
     });
     return () => {
-      viewport.removeEventListener("scroll", schedule);
+      viewport.removeEventListener("scroll", draw);
       theme.disconnect();
-      cancelAnimationFrame(frame);
     };
-  }, [graph, layout, selected.key, scale, originX, originY]);
+  }, []);
 
-  const changeZoom = (next: number, point?: Placement) => {
+  const changeZoom = (next: number, point?: { x: number; y: number }) => {
     const viewport = viewportRef.current;
-    if (!viewport || !fitScale || (next === zoom && !point)) return;
-    const centerX =
-      point?.x ?? (viewport.scrollLeft + size.width / 2 - originX) / scale;
-    const centerY =
-      point?.y ?? (viewport.scrollTop + size.height / 2 - originY) / scale;
-    const nextScale = fitScale * next;
-    const nextOriginX =
-      marginX + Math.max(0, (size.width - graph.width * nextScale) / 2);
-    const nextOriginY =
-      marginY + Math.max(0, (size.height - graph.height * nextScale) / 2);
-    setZoom(next);
-    requestAnimationFrame(() =>
-      viewport.scrollTo(
-        Math.max(0, centerX * nextScale + nextOriginX - size.width / 2),
-        Math.max(0, centerY * nextScale + nextOriginY - size.height / 2),
-      ),
+    if (!viewport || !scale) return;
+    const x =
+      (viewport.scrollLeft + size.width / 2 - originX) / (scale * frame.width);
+    const y =
+      (viewport.scrollTop + size.height / 2 - originY) / (scale * frame.height);
+    fly(
+      { zoom: camera.zoom, x, y },
+      { zoom: next, x: point?.x ?? x, y: point?.y ?? y },
     );
   };
+  useLayoutEffect(() => {
+    if (fitRequest === lastFitRequest.current) return;
+    lastFitRequest.current = fitRequest;
+    changeZoom(1, { x: 0.5, y: 0.5 });
+  });
   const onPointerDown = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+    interrupt();
     if (event.pointerType !== "mouse" || event.button !== 0) return;
     const viewport = event.currentTarget;
     drag.current = {
@@ -904,6 +930,8 @@ function PortfolioCanvas({
         aria-label="Portfolio graph"
         data-panning={panning}
         onPointerDown={onPointerDown}
+        onWheel={interrupt}
+        onKeyDown={interrupt}
         onPointerMove={onPointerMove}
         onPointerLeave={(event) => {
           if (!drag.current?.moved) endDrag(event);
@@ -922,105 +950,115 @@ function PortfolioCanvas({
           <div
             class="af-portfolio-plot"
             style={{
-              width: graph.width,
-              height: graph.height,
+              width: frame.width,
+              height: frame.height,
               transform: `translate(${originX}px, ${originY}px) scale(${scale})`,
             }}
           >
-            {graph.nodes.map(({ node, x, y, width, height }) => (
-              <button
-                key={node.key}
-                type="button"
-                class="af-portfolio-node"
-                data-kind={node.kind}
-                data-dim={Boolean(
-                  highlighted &&
-                    !highlighted.has(node.key) &&
-                    node.key !== selected.key &&
-                    node.kind !== "owner",
-                )}
-                aria-label={graphNodeLabel(node)}
-                aria-pressed={selected.key === node.key}
-                aria-expanded={
-                  node.kind === "epic" ? expanded.has(node.key) : undefined
-                }
-                title={graphNodeLabel(node)}
-                style={{
-                  left: x - width / 2,
-                  top: y - height / 2,
-                  width,
-                  height,
-                }}
-                onClick={() => onSelect(node)}
-              >
-                {node.kind === "bead" ? (
-                  <StatusMark state={node.bead.workState} />
-                ) : (
-                  <>
-                    <strong>{node.title}</strong>
-                    {node.kind === "project" &&
-                    node.project.availability !== "available" ? (
-                      <small>
-                        {availabilityLabel(node.project.availability)}
-                      </small>
-                    ) : (
-                      (node.kind === "epic" || node.kind === "project") && (
+            {frame.nodes.map(
+              ({ node, x, y, width, height, opacity, exiting }) => (
+                <button
+                  key={node.key}
+                  type="button"
+                  class="af-portfolio-node"
+                  disabled={exiting}
+                  aria-hidden={exiting || undefined}
+                  data-kind={node.kind}
+                  data-dim={Boolean(
+                    highlighted &&
+                      !highlighted.has(node.key) &&
+                      node.key !== selected.key &&
+                      node.kind !== "owner",
+                  )}
+                  aria-label={graphNodeLabel(node)}
+                  aria-pressed={selected.key === node.key}
+                  aria-expanded={
+                    node.kind === "epic" ? expanded.has(node.key) : undefined
+                  }
+                  title={graphNodeLabel(node)}
+                  style={{
+                    left: 0,
+                    top: 0,
+                    translate: `${x - width / 2}px ${y - height / 2}px`,
+                    "--af-node-presence":
+                      opacity < 1 ? String(opacity) : undefined,
+                    pointerEvents: exiting ? "none" : undefined,
+                    width,
+                    height,
+                  }}
+                  onClick={() => onSelect(node)}
+                >
+                  {node.kind === "bead" ? (
+                    <StatusMark state={node.bead.workState} />
+                  ) : (
+                    <>
+                      <strong>{node.title}</strong>
+                      {node.kind === "project" &&
+                      node.project.availability !== "available" ? (
                         <small>
-                          {node.counts.completed}/{node.counts.total} done
-                          {node.counts.working > 0 && (
-                            <span data-work-state="working">
-                              {" "}
-                              <StatusMark state="working" />
-                              {node.counts.working}
-                            </span>
-                          )}
-                          {node.counts.blocked > 0 && (
-                            <span data-work-state="blocked">
-                              {" "}
-                              <StatusMark state="blocked" />
-                              {node.counts.blocked}
-                            </span>
-                          )}
+                          {availabilityLabel(node.project.availability)}
                         </small>
-                      )
-                    )}
-                  </>
-                )}
-              </button>
-            ))}
+                      ) : (
+                        (node.kind === "epic" || node.kind === "project") && (
+                          <small>
+                            {node.counts.completed}/{node.counts.total} done
+                            {node.counts.working > 0 && (
+                              <span data-work-state="working">
+                                {" "}
+                                <StatusMark state="working" />
+                                {node.counts.working}
+                              </span>
+                            )}
+                            {node.counts.blocked > 0 && (
+                              <span data-work-state="blocked">
+                                {" "}
+                                <StatusMark state="blocked" />
+                                {node.counts.blocked}
+                              </span>
+                            )}
+                          </small>
+                        )
+                      )}
+                    </>
+                  )}
+                </button>
+              ),
+            )}
           </div>
         </div>
       </div>
       <div class="af-portfolio-zoom" role="group" aria-label="Graph scale">
         <Button
           aria-label="Zoom out"
-          disabled={zoom <= 1}
-          onClick={() => changeZoom(Math.max(1, zoom / 1.35))}
+          disabled={requestedZoom <= 1}
+          onClick={() => changeZoom(Math.max(1, requestedZoom / 1.35))}
         >
           −
         </Button>
         <Button
           aria-label="Zoom in"
-          disabled={zoom >= maxZoom}
-          onClick={() => changeZoom(Math.min(maxZoom, zoom * 1.35))}
+          disabled={requestedZoom >= maxZoom}
+          onClick={() => changeZoom(Math.min(maxZoom, requestedZoom * 1.35))}
         >
           +
         </Button>
         {selected.kind !== "owner" && (
           <Button
-            onClick={() => changeZoom(nativeZoom, layout.get(selected.key))}
+            onClick={() => {
+              const target = graph.nodes.find(
+                ({ node }) => node.key === selected.key,
+              );
+              if (target)
+                changeZoom(nativeZoom, {
+                  x: target.x / graph.width,
+                  y: target.y / graph.height,
+                });
+            }}
           >
             Focus selection
           </Button>
         )}
-        <Button
-          onClick={() => {
-            setZoom(1);
-            viewportRef.current?.scrollTo(marginX, marginY);
-          }}
-        >
-          Fit
-        </Button>
+        <Button onClick={() => changeZoom(1, { x: 0.5, y: 0.5 })}>Fit</Button>
       </div>
     </div>
   );
@@ -1044,7 +1082,7 @@ function boundaryPoint(
 
 function drawConnections(
   canvas: HTMLCanvasElement,
-  graph: PortfolioGraph,
+  graph: GraphFrame,
   layout: ReadonlyMap<string, Placement>,
   selected: string,
   scale: number,
@@ -1054,8 +1092,12 @@ function drawConnections(
   const context = canvas.getContext("2d");
   if (!context) return;
   const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(canvas.clientWidth * ratio);
-  canvas.height = Math.round(canvas.clientHeight * ratio);
+  const width = Math.round(canvas.clientWidth * ratio);
+  const height = Math.round(canvas.clientHeight * ratio);
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, width, height);
   context.setTransform(
     scale * ratio,
     0,
@@ -1083,7 +1125,8 @@ function drawConnections(
       ? boundaryPoint(control, to, 5)
       : { x: to.x, y: to.y, angle: 0 };
     const active = edge.from === selected || edge.to === selected;
-    context.globalAlpha = active ? 0.95 : isMembership ? 0.58 : 0.64;
+    context.globalAlpha =
+      edge.opacity * (active ? 0.95 : isMembership ? 0.58 : 0.64);
     context.strokeStyle = colors[edge.type];
     context.lineWidth =
       (active ? 1.8 : 1.2) / Math.max(scale, 0.5) +

@@ -403,6 +403,7 @@
     "apps/desktop/src/observed-session.css",
     "apps/desktop/src/overview.css",
     "apps/desktop/src/portfolio-work-map-model.ts",
+    "apps/desktop/src/portfolio-work-map-motion.ts",
     "apps/desktop/src/portfolio-work-map.css",
     "apps/desktop/src/project-activity-client.ts",
     "apps/desktop/src/project-activity-model.ts",
