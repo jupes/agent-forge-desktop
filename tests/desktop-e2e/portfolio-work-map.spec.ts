@@ -283,29 +283,34 @@ test("live work is visible on the collapsed map and honors reduced motion", asyn
   page,
 }) => {
   seedWorkMap();
-  let observation: "live" | "unavailable" | "ended" = "live";
-  // The engine tests owned-turn identity and freshness. Change just that observed
-  // state on an admitted tracker row to exercise the two UI snapshots here.
-  await page.route(`**${mapPath}`, async (route) => {
-    const response = await route.fetch();
-    if (!response.ok() || observation === "ended")
-      return route.fulfill({ response });
-    if (observation === "unavailable")
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const authorizedRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === mapPath,
+  );
+  await openSettled(page, "/index.html#/desktop/work-map");
+  const response = await authorizedRead;
+  expect(response.status()).toBe(200);
+  const envelope = await response.json();
+  expect(envelope).toMatchObject({ ok: true, error: null });
+  const data = projectWorkMapSchema.parse(envelope.data);
+  const observed = data.beads.find((bead) => bead.id === "map-runtime");
+  if (observed?.workState !== "in_progress")
+    throw Error("Expected the admitted in-progress runtime bead");
+  observed.workState = "working";
+  let unavailable = false;
+  // Only the owned-turn observation changes on the first refresh. The final
+  // refresh goes back through the browser's normal protected read.
+  const fixtureRoute = `**${mapPath}`;
+  await page.route(fixtureRoute, async (route) => {
+    if (unavailable)
       return route.fulfill({
         status: 503,
         json: { ok: false, data: null, error: "Fixture read unavailable" },
       });
-    const envelope = await response.json();
-    if (!envelope.ok) return route.fulfill({ response });
-    const data = projectWorkMapSchema.parse(envelope.data);
-    const observed = data.beads.find((bead) => bead.id === "map-runtime");
-    if (observed?.workState !== "in_progress")
-      throw Error("Expected the admitted in-progress runtime bead");
-    observed.workState = "working";
-    await route.fulfill({ response, json: { ...envelope, data } });
+    await route.fulfill({ json: { ok: true, data, error: null } });
   });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await openSettled(page, "/index.html#/desktop/work-map");
+  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+  await refresh.click();
   const graph = page.getByRole("group", { name: "Portfolio graph" });
   const live = graph.getByRole("button", {
     name: "map-runtime, Map runtime metadata, Working now",
@@ -361,15 +366,14 @@ test("live work is visible on the collapsed map and honors reduced motion", asyn
       );
     })
     .toBeLessThan(2);
-  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  observation = "unavailable";
+  unavailable = true;
   await refresh.click();
   await expect(
     graph.getByRole("button", { name: /^map-runtime,/ }),
   ).toHaveAccessibleName(/Last seen working/);
   await expect(graph.locator('[data-forging="true"]')).toHaveCount(0);
-  observation = "ended";
+  await page.unroute(fixtureRoute);
   await refresh.click();
   await expect(
     graph.getByRole("button", { name: /^map-runtime,/ }),
@@ -430,7 +434,17 @@ test("left-click drag pans the Work Map and Back to center preserves the focused
   const fitted = await ownerPosition();
   const canvas = await position(graph);
   const docked = await position(center);
-  await drag(canvas.x + 24, canvas.y + canvas.height - 90, 60, 36);
+  // Stay in the visible canvas below the floating control. The graph can extend
+  // past the bottom of the browser when the toolbar and header are present.
+  const start = { x: canvas.x + 24, y: docked.y + docked.height + 18 };
+  expect(
+    await graph.evaluate(
+      (viewport, point) =>
+        viewport.contains(document.elementFromPoint(point.x, point.y)),
+      start,
+    ),
+  ).toBe(true);
+  await drag(start.x, start.y, 60, 36);
   await expectMoved(fitted, 60, 36);
   expect(await position(center)).toEqual(docked);
   await page.mouse.move(canvas.x + 150, canvas.y + 120);

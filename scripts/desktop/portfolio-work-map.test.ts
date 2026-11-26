@@ -209,13 +209,28 @@ test("the overview shows one active bead per project and its branch reveals othe
     ...snapshot,
     beads: [
       ...snapshot.beads,
-      bead("engine-extra", "Verify runtime", "engine", "engine-root", "working"),
-      bead("desktop-extra", "Write release notes", "desktop", "desktop-root", "working"),
+      bead(
+        "engine-extra",
+        "Verify runtime",
+        "engine",
+        "engine-root",
+        "working",
+      ),
+      bead(
+        "desktop-extra",
+        "Write release notes",
+        "desktop",
+        "desktop-root",
+        "working",
+      ),
     ],
   });
   const overview = buildPortfolioGraph(model, new Map(), OWNER_NODE);
   const leaves = (graph: typeof overview) =>
-    graph.nodes.filter(({ node }) => node.kind === "bead").map(({ node }) => node.key).sort();
+    graph.nodes
+      .filter(({ node }) => node.kind === "bead")
+      .map(({ node }) => node.key)
+      .sort();
   expect(leaves(overview)).toEqual([
     beadNodeKey("desktop", "desktop-extra"),
     beadNodeKey("engine", "engine-issue"),
