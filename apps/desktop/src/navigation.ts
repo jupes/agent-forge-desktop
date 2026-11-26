@@ -2,6 +2,7 @@ import type { IconName } from "../../../docs/js/ds/Icon";
 
 export const GLOBAL_DESTINATIONS = [
   { id: "projects", label: "Projects", icon: "squares-four" },
+  { id: "work-map", label: "Work Map", icon: "flow-arrow" },
   { id: "inbox", label: "Inbox", icon: "tray" },
   { id: "providers", label: "Providers & usage", icon: "gauge" },
   { id: "smiths", label: "Smiths", icon: "users-three" },
@@ -37,6 +38,11 @@ const HOME: DesktopRoute = {
   projectId: null,
   selection: null,
 };
+const WORK_MAP: DesktopRoute = {
+  destination: "work-map",
+  projectId: null,
+  selection: null,
+};
 const identifier = (value: string | null): value is string =>
   value !== null &&
   value.trim().length > 0 &&
@@ -64,6 +70,7 @@ export function desktopRoute(hash: string): DesktopRoute {
       (scoped && !identifier(projectId))
     )
       return HOME;
+    if (destination === "work-map") return WORK_MAP;
     const kind = url.searchParams.get("selectionKind");
     const id = url.searchParams.get("selectionId");
     const selection: DesktopSelection | null =
@@ -97,6 +104,7 @@ export function observeDesktopRoute(
 }
 
 export function desktopHref(route: DesktopRoute): string {
+  if (route.destination === "work-map") return "#/desktop/work-map";
   const global = GLOBAL_DESTINATIONS.some(
     (entry) => entry.id === route.destination,
   );
@@ -117,6 +125,7 @@ export function navigateGlobal(
   route: DesktopRoute,
   destination: GlobalDestination,
 ): DesktopRoute {
+  if (destination === "work-map") return WORK_MAP;
   return { ...route, destination };
 }
 export function navigateProject(

@@ -1,0 +1,183 @@
+.af-portfolio-forge {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  color: var(--portfolio-text);
+  background: color-mix(
+    in srgb,
+    var(--portfolio-warning) 15%,
+    var(--portfolio-surface)
+  );
+  font-size: 32px;
+  pointer-events: none;
+}
+
+.af-portfolio-forge-anvil,
+.af-portfolio-forge-iron,
+.af-portfolio-forge-hammer,
+.af-portfolio-forge-sparks {
+  position: absolute;
+}
+
+.af-portfolio-forge-anvil {
+  inset: 60% 11% 15% 10%;
+  background: currentColor;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    80% 42%,
+    62% 42%,
+    58% 67%,
+    74% 85%,
+    74% 100%,
+    18% 100%,
+    18% 85%,
+    33% 67%,
+    30% 42%,
+    13% 42%
+  );
+}
+
+.af-portfolio-forge-iron {
+  inset: 51% 42% 40% 23%;
+  border-radius: 25%;
+  background: var(--portfolio-warning);
+}
+
+.af-portfolio-forge-hammer {
+  inset: 31% 12% 48% 20%;
+  transform: rotate(32deg);
+  transform-origin: 94% 48%;
+}
+
+.af-portfolio-forge-hammer::before,
+.af-portfolio-forge-hammer::after,
+.af-portfolio-forge-sparks::before,
+.af-portfolio-forge-sparks::after {
+  content: "";
+  position: absolute;
+}
+
+.af-portfolio-forge-hammer::before {
+  inset: 26% 0 31% 18%;
+  border-radius: 1em;
+  background: var(--portfolio-warning);
+}
+
+.af-portfolio-forge-hammer::after {
+  inset: 0 60% 0 0;
+  border-radius: 18%;
+  background: currentColor;
+}
+
+.af-portfolio-forge-sparks {
+  inset: 0;
+}
+
+.af-portfolio-forge-sparks::before,
+.af-portfolio-forge-sparks::after {
+  top: 46%;
+  left: 37%;
+  width: 7%;
+  height: 7%;
+  border-radius: 30%;
+  background: var(--portfolio-warning);
+  opacity: 0;
+}
+
+.af-portfolio-forge-sparks::before {
+  --spark-x: -0.23em;
+  --spark-y: -0.18em;
+}
+
+.af-portfolio-forge-sparks::after {
+  --spark-x: 0.17em;
+  --spark-y: -0.24em;
+}
+
+.af-portfolio-node[data-kind="bead"][data-forging="true"] {
+  border-color: var(--portfolio-warning);
+}
+
+.af-portfolio-node[data-kind="bead"] > .af-portfolio-forge {
+  font-size: var(--af-forge-graph-size, 32px);
+  box-shadow: 0 0 0 1px var(--portfolio-warning);
+}
+
+.af-portfolio-node[data-kind="epic"] > .af-portfolio-forge {
+  position: absolute;
+  inset: -8px -8px auto auto;
+  font-size: 24px;
+  box-shadow: 0 0 0 1px var(--portfolio-warning);
+}
+
+.af-portfolio-working .af-portfolio-row {
+  border-color: var(--portfolio-border);
+}
+
+@media (forced-colors: active) {
+  .af-portfolio-forge {
+    --portfolio-warning: Highlight;
+    color: CanvasText;
+    background: Canvas;
+    forced-color-adjust: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .af-portfolio-map:not([data-stale]) .af-portfolio-forge-hammer {
+    animation: af-forge-strike 1.8s linear infinite;
+  }
+
+  .af-portfolio-map:not([data-stale]) .af-portfolio-forge-sparks::before,
+  .af-portfolio-map:not([data-stale]) .af-portfolio-forge-sparks::after {
+    animation: af-forge-spark 1.8s ease-out infinite;
+  }
+}
+
+@keyframes af-forge-strike {
+  0%,
+  30%,
+  100% {
+    transform: rotate(32deg);
+  }
+  40% {
+    transform: rotate(43deg);
+    animation-timing-function: ease-in;
+  }
+  49% {
+    transform: rotate(0deg);
+    animation-timing-function: ease-out;
+  }
+  57% {
+    transform: rotate(17deg);
+  }
+  65% {
+    transform: rotate(12deg);
+  }
+  81% {
+    transform: rotate(32deg);
+  }
+}
+
+@keyframes af-forge-spark {
+  0%,
+  48%,
+  68%,
+  100% {
+    opacity: 0;
+  }
+  48% {
+    transform: translate(0, 0) rotate(45deg);
+  }
+  50% {
+    opacity: 1;
+  }
+  68%,
+  100% {
+    transform: translate(var(--spark-x), var(--spark-y)) rotate(85deg);
+  }
+}

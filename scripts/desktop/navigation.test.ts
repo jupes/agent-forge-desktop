@@ -68,6 +68,26 @@ test("global navigation preserves project scope and selection and returning to a
   });
 });
 
+test("Work Map opens the portfolio without inheriting an individual bead or project", () => {
+  const previous = desktopRoute(
+    "#/desktop/project/p-1/beads?selectionKind=bead&selectionId=forge-1",
+  );
+  const portfolio: DesktopRoute = {
+    destination: "work-map",
+    projectId: null,
+    selection: null,
+  };
+  expect(navigateGlobal(previous, "work-map")).toEqual(portfolio);
+  expect(desktopHref({ ...previous, destination: "work-map" })).toBe(
+    "#/desktop/work-map",
+  );
+  expect(
+    desktopRoute(
+      "#/desktop/work-map?project=p-1&selectionKind=bead&selectionId=forge-1",
+    ),
+  ).toEqual(portfolio);
+});
+
 test("missing projects and malformed links remain honest rather than inventing a selected project", () => {
   expect(desktopRoute("")).toEqual({
     destination: "projects",

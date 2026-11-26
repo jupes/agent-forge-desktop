@@ -130,6 +130,11 @@ export function ProjectsHomeView({
           </select>
         </label>
         <Button onClick={reload}>Refresh projects</Button>
+        {home.catalog.projects.length > 0 && (
+          <Button href="#/desktop/work-map" icon="flow-arrow">
+            Open Work Map
+          </Button>
+        )}
       </div>
       <p class="af-projects-muted">
         Pinned first, then needs you, then last activity.{" "}

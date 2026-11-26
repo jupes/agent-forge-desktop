@@ -122,7 +122,11 @@ export function DesktopFrame({
   const project = supplied?.id === route.projectId ? supplied : null;
   const projectName =
     project?.name ??
-    (route.projectId ? "Project unavailable" : "No project selected");
+    (route.destination === "work-map"
+      ? "All projects"
+      : route.projectId
+        ? "Project unavailable"
+        : "No project selected");
   const global = GLOBAL_DESTINATIONS.find(
     (entry) => entry.id === route.destination,
   );
