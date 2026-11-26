@@ -155,3 +155,79 @@ test("the protected Work Map starts at the portfolio and follows epic delivery a
   await expect(packaging).toHaveAttribute("aria-expanded", "false");
   await expect(graph.locator('[data-kind="bead"]')).toHaveCount(0);
 });
+
+test("left-click drag pans the Work Map without opening a node", async ({
+  page,
+}) => {
+  seedWorkMap();
+  await openSettled(page, "/index.html#/desktop/work-map");
+  const graph = page.getByRole("group", { name: "Portfolio graph" });
+  const you = graph.getByRole("button", { name: "You", exact: true });
+  const release = graph.getByRole("button", { name: "Release fixes, epic" });
+  const scale = page.getByRole("group", { name: "Graph scale" });
+  await expect(you).toBeInViewport();
+
+  const position = async (node: typeof you) => {
+    const box = await node.boundingBox();
+    if (!box) throw Error("Expected a visible graph element");
+    return box;
+  };
+  const drag = async (x: number, y: number, dx: number, dy: number) => {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 5 });
+    await page.mouse.up();
+  };
+  const ownerPosition = async () => {
+    const [box, viewport] = await Promise.all([position(you), position(graph)]);
+    return { x: box.x - viewport.x, y: box.y - viewport.y, width: box.width };
+  };
+  const expectMoved = async (
+    before: { x: number; y: number },
+    dx: number,
+    dy: number,
+  ) => {
+    await expect
+      .poll(async () => {
+        const after = await ownerPosition();
+        return Math.max(
+          Math.abs(after.x - before.x - dx),
+          Math.abs(after.y - before.y - dy),
+        );
+      })
+      .toBeLessThan(2);
+  };
+
+  const fitted = await ownerPosition();
+  const canvas = await position(graph);
+  await drag(canvas.x + 24, canvas.y + 24, 60, 36);
+  await expectMoved(fitted, 60, 36);
+  await page.mouse.move(canvas.x + 150, canvas.y + 120);
+  await expectMoved(fitted, 60, 36);
+
+  await scale.getByRole("button", { name: "Fit", exact: true }).click();
+  await expectMoved(fitted, 0, 0);
+  await scale.getByRole("button", { name: "Zoom in" }).click();
+  await expect
+    .poll(async () => (await position(you)).width)
+    .toBeGreaterThan(fitted.width);
+  await expect(release).toBeInViewport();
+  const zoomed = await ownerPosition();
+  const epic = await position(release);
+  await drag(epic.x + epic.width / 2, epic.y + epic.height / 2, 22, 16);
+  await expectMoved(zoomed, 22, 16);
+  await expect(release).toHaveAttribute("aria-expanded", "false");
+  await expect(release).toHaveAttribute("aria-pressed", "false");
+  expect((await position(you)).width).toBeCloseTo(zoomed.width);
+
+  const shiftedEpic = await position(release);
+  const epicX = shiftedEpic.x + shiftedEpic.width / 2;
+  const epicY = shiftedEpic.y + shiftedEpic.height / 2;
+  await page.mouse.move(epicX, epicY);
+  await page.mouse.down();
+  await page.mouse.move(epicX + 1, epicY + 1);
+  await expectMoved(zoomed, 22, 16);
+  await page.mouse.up();
+  await expect(release).toHaveAttribute("aria-expanded", "true");
+  await expect(release).toHaveAttribute("aria-pressed", "true");
+});

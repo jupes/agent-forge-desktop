@@ -191,10 +191,12 @@
   height: clamp(425px, calc(100vh - 214px), 840px);
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
   cursor: grab;
+  user-select: none;
 }
 
-.af-portfolio-viewport:active {
+.af-portfolio-viewport[data-panning="true"] {
   cursor: grabbing;
 }
 
@@ -226,7 +228,7 @@
   font: inherit;
   font-size: 14px;
   line-height: 1.2;
-  cursor: pointer;
+  cursor: inherit;
 }
 
 .af-portfolio-node strong {

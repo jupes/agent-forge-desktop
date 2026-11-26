@@ -1,5 +1,12 @@
 import type { JSX } from "preact";
-import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
 import { Button } from "../../../docs/js/ds/Button";
 import type { ProjectWorkMap } from "../../../types/project-work-map";
 import {
@@ -727,13 +734,17 @@ function PortfolioCanvas({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previousMargins = useRef({ x: 0, y: 0 });
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
+  const [panning, setPanning] = useState(false);
   const drag = useRef<{
+    pointerId: number;
     x: number;
     y: number;
     left: number;
     top: number;
+    moved: boolean;
   } | null>(null);
   const fitScale = Math.min(
     size.width / graph.width,
@@ -745,8 +756,11 @@ function PortfolioCanvas({
   const maxZoom = Math.max(4, nativeZoom * 1.5);
   const stageWidth = Math.max(size.width, Math.ceil(scale * graph.width));
   const stageHeight = Math.max(size.height, Math.ceil(scale * graph.height));
-  const originX = (stageWidth - scale * graph.width) / 2;
-  const originY = (stageHeight - scale * graph.height) / 2;
+  // Leave scroll room on both sides even when the whole graph fits.
+  const marginX = Math.floor(size.width / 2);
+  const marginY = Math.floor(size.height / 2);
+  const originX = marginX + (stageWidth - scale * graph.width) / 2;
+  const originY = marginY + (stageHeight - scale * graph.height) / 2;
   const layout = useMemo(
     () => new Map(graph.nodes.map((entry) => [entry.node.key, entry])),
     [graph],
@@ -763,9 +777,22 @@ function PortfolioCanvas({
     return () => observer.disconnect();
   }, []);
 
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const previous = previousMargins.current;
+    viewport.scrollTo(
+      viewport.scrollLeft + marginX - previous.x,
+      viewport.scrollTop + marginY - previous.y,
+    );
+    previousMargins.current = { x: marginX, y: marginY };
+  }, [marginX, marginY]);
+
   useEffect(() => {
     setZoom(1);
-    viewportRef.current?.scrollTo(0, 0);
+    const viewport = viewportRef.current;
+    const { x, y } = previousMargins.current;
+    viewport?.scrollTo(x, y);
   }, [fitRequest]);
 
   useEffect(() => {
@@ -809,11 +836,10 @@ function PortfolioCanvas({
     const centerY =
       point?.y ?? (viewport.scrollTop + size.height / 2 - originY) / scale;
     const nextScale = fitScale * next;
-    const nextOriginX = Math.max(0, (size.width - graph.width * nextScale) / 2);
-    const nextOriginY = Math.max(
-      0,
-      (size.height - graph.height * nextScale) / 2,
-    );
+    const nextOriginX =
+      marginX + Math.max(0, (size.width - graph.width * nextScale) / 2);
+    const nextOriginY =
+      marginY + Math.max(0, (size.height - graph.height * nextScale) / 2);
     setZoom(next);
     requestAnimationFrame(() =>
       viewport.scrollTo(
@@ -823,30 +849,40 @@ function PortfolioCanvas({
     );
   };
   const onPointerDown = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-    if (
-      event.pointerType !== "mouse" ||
-      event.button !== 0 ||
-      (event.target instanceof Element && event.target.closest("button"))
-    )
-      return;
+    if (event.pointerType !== "mouse" || event.button !== 0) return;
     const viewport = event.currentTarget;
     drag.current = {
+      pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       left: viewport.scrollLeft,
       top: viewport.scrollTop,
+      moved: false,
     };
-    viewport.setPointerCapture(event.pointerId);
+  };
+  const endDrag = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+    if (drag.current?.pointerId !== event.pointerId) return;
+    drag.current = null;
+    setPanning(false);
   };
   const onPointerMove = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    event.currentTarget.scrollTo(
-      drag.current.left - event.clientX + drag.current.x,
-      drag.current.top - event.clientY + drag.current.y,
-    );
-  };
-  const endDrag = () => {
-    drag.current = null;
+    const press = drag.current;
+    if (press?.pointerId !== event.pointerId) return;
+    if (!(event.buttons & 1)) {
+      endDrag(event);
+      return;
+    }
+    const dx = event.clientX - press.x;
+    const dy = event.clientY - press.y;
+    const viewport = event.currentTarget;
+    if (!press.moved) {
+      if (Math.hypot(dx, dy) < 5) return;
+      // Capture only after a drag starts so a stationary click stays on its node.
+      viewport.setPointerCapture(event.pointerId);
+      press.moved = true;
+      setPanning(true);
+    }
+    viewport.scrollTo(press.left - dx, press.top - dy);
   };
 
   return (
@@ -859,15 +895,22 @@ function PortfolioCanvas({
         ref={viewportRef}
         role="group"
         aria-label="Portfolio graph"
+        data-panning={panning}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
+        onPointerLeave={(event) => {
+          if (!drag.current?.moved) endDrag(event);
+        }}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
       >
         <div
           class="af-portfolio-stage"
-          style={{ width: stageWidth, height: stageHeight }}
+          style={{
+            width: stageWidth + 2 * marginX,
+            height: stageHeight + 2 * marginY,
+          }}
         >
           <div
             class="af-portfolio-plot"
@@ -966,7 +1009,7 @@ function PortfolioCanvas({
         <Button
           onClick={() => {
             setZoom(1);
-            viewportRef.current?.scrollTo(0, 0);
+            viewportRef.current?.scrollTo(marginX, marginY);
           }}
         >
           Fit
