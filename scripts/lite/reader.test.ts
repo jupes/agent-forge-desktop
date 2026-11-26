@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { test as bunTest, expect } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -8,12 +8,35 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { lockPath, tokenPath } from "../hearth/home";
-import { ensurePrivateHome } from "../hearth/home-guard";
-import { API_PREFIX, HEALTH_ROUTE, OPERATOR_HEADER } from "../hearth/paths";
-import { writeOwnerOnly } from "../hearth/token";
-import { liteRequest, readLite } from "./reader";
+import { join, resolve } from "node:path";
+
+// Two full Windows runs crashed inside Bun just after this socket/ACL fixture,
+// before the next suite finished. Lite itself performs each read in a child.
+function test(name: string, verify: () => Promise<void>) {
+  bunTest(name, async () => {
+    if (process.platform !== "win32") return verify();
+    const completed = `Verified Lite reader fixture: ${name}`;
+    if (process.env.AGENT_FORGE_LITE_READER_TEST === name) {
+      await verify();
+      process.stdout.write(completed + "\n");
+      return;
+    }
+    const child = Bun.spawnSync(
+      [process.execPath, "test", "./scripts/lite/reader.test.ts", "-t", name],
+      {
+        cwd: resolve(import.meta.dir, "../.."),
+        env: { ...process.env, AGENT_FORGE_LITE_READER_TEST: name },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        windowsHide: true,
+        timeout: 10_000,
+      },
+    );
+    expect(child.exitCode, child.stderr.toString()).toBe(0);
+    expect(child.stdout.toString().split(/\r?\n/)).toContain(completed);
+  });
+}
 
 const projectId = "project-12345678-abcd-4eef-8aaa-123456789abc";
 const now = "2026-11-20T01:00:00.000Z";
@@ -38,6 +61,7 @@ function fixture() {
 }
 
 test("Lite accepts only its two fixed reads and keeps a fresh offline catalog read free of writes", async () => {
+  const { liteRequest, readLite } = await import("./reader");
   const f = fixture();
   try {
     for (const args of [
@@ -65,6 +89,13 @@ test("Lite accepts only its two fixed reads and keeps a fresh offline catalog re
 });
 
 test("Lite reads the identified Hearth and returns only the selected project's validated trend data", async () => {
+  const { lockPath, tokenPath } = await import("../hearth/home");
+  const { ensurePrivateHome } = await import("../hearth/home-guard");
+  const { API_PREFIX, HEALTH_ROUTE, OPERATOR_HEADER } = await import(
+    "../hearth/paths"
+  );
+  const { writeOwnerOnly } = await import("../hearth/token");
+  const { readLite } = await import("./reader");
   const f = fixture();
   const calls: { path: string; method: string; credential: string | null }[] =
     [];
