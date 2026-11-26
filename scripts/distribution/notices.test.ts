@@ -190,8 +190,6 @@ test("desktop and production dashboard builds emit distribution notices", async 
                       "chart.js",
                       "chartjs-chart-matrix",
                       "preact",
-                      "yaml",
-                      "zod",
                     ],
               );
             },
