@@ -10,8 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-// Two full Windows runs crashed inside Bun just after this socket/ACL fixture,
-// before the next suite finished. Lite itself performs each read in a child.
+// Keep Windows native fixture setup in its own process and surface its exit
+// separately from the source reader's. Both must complete all their assertions.
 function test(name: string, verify: () => Promise<void>) {
   bunTest(name, async () => {
     if (process.platform !== "win32") return verify();
@@ -39,16 +39,6 @@ function test(name: string, verify: () => Promise<void>) {
 }
 
 const projectId = "project-12345678-abcd-4eef-8aaa-123456789abc";
-const now = "2026-11-20T01:00:00.000Z";
-const empty = {
-  asOf: now,
-  trackerAvailable: false,
-  sessionsComplete: false,
-  projects: [],
-  epics: [],
-  beads: [],
-  dependencies: [],
-};
 function fixture() {
   const folder = realpathSync.native(
     mkdtempSync(join(tmpdir(), "forge lite ")),
@@ -88,101 +78,64 @@ test("Lite accepts only its two fixed reads and keeps a fresh offline catalog re
   }
 });
 
-test("Lite reads the identified Hearth and returns only the selected project's validated trend data", async () => {
-  const { lockPath, tokenPath } = await import("../hearth/home");
-  const { ensurePrivateHome } = await import("../hearth/home-guard");
-  const { API_PREFIX, HEALTH_ROUTE, OPERATOR_HEADER } = await import(
-    "../hearth/paths"
-  );
-  const { writeOwnerOnly } = await import("../hearth/token");
-  const { readLite } = await import("./reader");
-  const f = fixture();
-  const calls: { path: string; method: string; credential: string | null }[] =
-    [];
-  let healthRoot = f.checkout;
-  const credential = "a".repeat(64);
-  const observation = {
-    data: [{ date: "2026-11-20", count: 2 }],
-    asOf: now,
-    complete: true,
-    source: "ledger",
-    reason: null,
-  };
-  const server = Bun.serve({
-    port: 0,
-    hostname: "127.0.0.1",
-    fetch(request) {
-      const path = new URL(request.url).pathname;
-      calls.push({
-        path,
-        method: request.method,
-        credential: request.headers.get(OPERATOR_HEADER),
-      });
-      const data =
-        path === HEALTH_ROUTE
-          ? { pid: process.pid, root: healthRoot }
-          : path === API_PREFIX + "/projects/work-map"
-            ? empty
-            : {
-                summary: {
-                  projectId,
-                  asOf: now,
-                  runs: [],
-                  sessions: ["private-incident"],
-                },
-                throughput: observation,
-                beads: ["private-bead"],
-              };
-      return Response.json({ ok: true, data, error: null });
+// A real Lite reader is one bounded process, with the Hearth HTTP owner in another.
+async function sourceRead(home: string, args: string[]): Promise<unknown> {
+  const child = Bun.spawn(
+    [process.execPath, join(import.meta.dir, "fixtures/read-once.ts"), ...args],
+    {
+      env: { ...process.env, AGENT_FORGE_HOME: home },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      windowsHide: true,
+      timeout: 4000,
     },
-  });
+  );
+  const [code, output, error] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  if (code === 1) throw Error(error);
+  if (code !== 0)
+    throw Error(`Reader child terminated with code ${code}: ${error}`);
   try {
-    ensurePrivateHome(f.home);
-    const file = tokenPath(f.home, f.checkout);
-    writeOwnerOnly(file, credential);
-    writeFileSync(
-      lockPath(f.home, f.checkout),
-      JSON.stringify({
-        pid: process.pid,
-        port: server.port,
-        root: f.checkout,
-        startedAt: now,
-        tokenFile: file,
-      }),
-      { mode: 0o600 },
-    );
-    expect(await readLite(["work-map", f.checkout], "unused", f.home)).toEqual(
-      empty,
-    );
-    expect(
-      await readLite(
-        ["project-trends", f.checkout, projectId],
-        "unused",
-        f.home,
-      ),
-    ).toEqual({
-      projectId,
-      asOf: now,
-      runs: [],
-      throughput: observation,
-    });
-    expect(calls.map((c) => [c.method, c.path, c.credential])).toEqual([
-      ["GET", HEALTH_ROUTE, null],
-      ["GET", API_PREFIX + "/projects/work-map", credential],
-      ["GET", HEALTH_ROUTE, null],
-      ["GET", API_PREFIX + "/projects/" + projectId + "/overview", credential],
-    ]);
-    healthRoot = "other-checkout";
-    await expect(
-      readLite(["work-map", f.checkout], "unused", f.home),
-    ).rejects.toThrow("could not be verified");
-    expect(calls.at(-1)).toEqual({
-      path: HEALTH_ROUTE,
-      method: "GET",
-      credential: null,
+    return JSON.parse(output);
+  } catch {
+    throw Error("The Lite source reader returned invalid JSON.");
+  }
+}
+
+test("Lite reads the identified Hearth and returns only the selected project's validated trend data", async () => {
+  const { API_PREFIX, HEALTH_ROUTE } = await import("../hearth/paths");
+  const { withLiteHearth } = await import("./fixtures/live-hearth");
+  const f = fixture();
+  try {
+    await withLiteHearth(f.checkout, f.home, async (hearth) => {
+      expect(await sourceRead(f.home, ["work-map", f.checkout])).toEqual(
+        hearth.workMap,
+      );
+      expect(
+        await sourceRead(f.home, ["project-trends", f.checkout, projectId]),
+      ).toEqual(hearth.trends);
+      const auth = hearth.credential;
+      expect(hearth.calls.map((c) => [c.method, c.path, c.credential])).toEqual(
+        [
+          ["GET", HEALTH_ROUTE, null],
+          ["GET", API_PREFIX + "/projects/work-map", auth],
+          ["GET", HEALTH_ROUTE, null],
+          ["GET", API_PREFIX + "/projects/" + projectId + "/overview", auth],
+        ],
+      );
+      hearth.wrongHealthRoot();
+      await expect(
+        sourceRead(f.home, ["work-map", f.checkout]),
+      ).rejects.toThrow("could not be verified");
+      expect(hearth.calls.slice(4)).toEqual([
+        { path: HEALTH_ROUTE, method: "GET", credential: null },
+      ]);
     });
   } finally {
-    await server.stop(true);
     rmSync(f.folder, { recursive: true, force: true });
   }
 });
