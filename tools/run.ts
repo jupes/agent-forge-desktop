@@ -4,7 +4,7 @@ import { prepare } from "./workspace";
 const allowed = new Set([
   "typecheck", "lint", "test", "desktop:build", "desktop:smoke", "dashboard",
   "dashboard:build", "verify:ui", "verify:desktop", "verify:desktop-worktrees",
-  "verify:desktop-shifts", "verify:desktop-restart",
+  "verify:desktop-shifts", "verify:desktop-restart", "lite:build", "lite:dev", "lite:web:build", "verify:lite",
 ]);
 const [name, ...args] = process.argv.slice(2);
 if (!name || !allowed.has(name)) throw Error("Choose a documented desktop build or verification command");

@@ -493,6 +493,25 @@ test("project Activity virtualizes scoped metadata and keyboard selection opens 
     page.getByRole("heading", { name: "Activity", exact: true, level: 1 }),
   ).toBeVisible();
   await expect(page.getByText("1201 events", { exact: false })).toBeVisible();
+  const distribution = page.getByRole("region", {
+    name: "Loaded events by kind",
+  });
+  await expect(
+    distribution.getByRole("button", { name: "Tool calls, 1,200 loaded" }),
+  ).toBeVisible();
+  const sessionEvents = distribution.getByRole("button", {
+    name: "Sessions, 1 loaded",
+  });
+  await sessionEvents.click();
+  await expect(sessionEvents).toHaveAttribute("aria-pressed", "true");
+  await expect(distribution.getByRole("button")).toHaveCount(1);
+  await expect(page.getByLabel("Session filter", { exact: true })).toHaveValue(
+    sessionId,
+  );
+  await sessionEvents.click();
+  await expect(
+    distribution.getByRole("button", { name: "Tool calls, 1,200 loaded" }),
+  ).toBeVisible();
   const feed = page.getByRole("listbox", { name: "Project activity" });
   await expect(feed).toBeVisible();
   expect(await page.locator(".af-activity-row").count()).toBeLessThan(80);

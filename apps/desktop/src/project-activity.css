@@ -78,6 +78,68 @@
   border: 1px dashed var(--color-divider);
   border-radius: 8px;
 }
+.af-activity-distribution h3 {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+.af-activity-distribution > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: 0.4rem 0.9rem;
+}
+.af-activity-distribution button {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.35rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.af-activity-distribution button > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.af-activity-distribution strong {
+  font-variant-numeric: tabular-nums;
+}
+.af-activity-distribution i,
+.af-activity-distribution b {
+  display: block;
+  height: 0.34rem;
+  border-radius: 1px;
+}
+.af-activity-distribution i {
+  background: var(--desktop-soft-surface, var(--color-divider));
+}
+.af-activity-distribution b {
+  transform-origin: left;
+  background: var(--desktop-accent, var(--color-accent-300));
+}
+.af-activity-distribution button:is(:hover, [aria-pressed="true"]) b {
+  background: var(--desktop-warning, #bf8848);
+}
+.af-activity-distribution button:focus-visible {
+  outline: 2px solid var(--desktop-accent, var(--color-accent));
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .af-activity-distribution b {
+    transition:
+      transform 240ms ease-out,
+      background-color 160ms ease;
+  }
+}
+@media (forced-colors: active) {
+  .af-activity-distribution b {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+}
 .af-activity-empty h3 {
   margin: 0 0 6px;
 }

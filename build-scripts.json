@@ -1,11 +1,15 @@
 {
   "test": "bun test ./scripts ./apps/desktop/src --timeout 15000",
-  "lint": "biome check --vcs-enabled=false scripts .claude/hooks .claude/skills types docs/js apps/desktop/src",
+  "lint": "biome check --vcs-enabled=false scripts .claude/hooks .claude/skills types docs/js apps/desktop/src apps/lite/main.tsx apps/lite/protocol.ts apps/lite/vite.config.ts apps/lite/style.css",
   "desktop:build": "bun run scripts/desktop/build.ts",
+  "lite:build": "bun run scripts/lite/build.ts",
+  "lite:dev": "bun run scripts/lite/build.ts --open",
+  "lite:web:build": "vite build --config apps/lite/vite.config.ts",
+  "verify:lite": "playwright test --config playwright.lite.config.ts",
   "desktop:smoke": "bun run scripts/desktop/smoke.ts",
   "verify:desktop": "playwright test --config playwright.desktop.config.ts",
   "verify:desktop-worktrees": "playwright test --config playwright.desktop-worktrees.config.ts",
   "verify:desktop-shifts": "playwright test --config playwright.desktop-shifts.config.ts",
   "verify:desktop-restart": "playwright test --config playwright.desktop-restart.config.ts",
-  "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json"
+  "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json && tsc --noEmit -p apps/lite/tsconfig.json"
 }

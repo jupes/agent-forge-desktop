@@ -2,6 +2,16 @@
 
 The desktop product for exploring Beads and dependencies, managing projects, and working with agent sessions and runs. This repository owns the desktop UI, Windows native shell, desktop tests, and app distribution.
 
+## Agent Forge Lite
+
+Forge Lite is a separate Windows x64 application for visualization and tracking. It opens the portfolio Work Map. Follow an epic to its beads and recorded outcomes, hover or focus a node to trace its connections, or choose **Compare projects** for a filtered comparison on one bead-count scale. **View project trends** opens daily closure counts and recorded Forge phases for that project. The full Desktop app remains the place to edit projects, start agents, or review work.
+
+Lite uses the Microsoft Edge WebView2 Runtime on Windows x64. Extract the complete **agent-forge-lite-windows-x64** portable artifact into its own directory and open `agent-forge-lite.exe`. Choose your Harness checkout when prompted. To use a particular checkout directly, run `agent-forge-lite.exe --root "<absolute path to your Harness checkout>"`. Lite uses the existing Forge project catalog. Set `AGENT_FORGE_HOME` to the same directory as Desktop if you use a custom catalog. [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+
+With a running Hearth for the checkout, Lite reads live work and project history. With the Hearth closed, it can still read the saved catalog and that checkout’s available tracker data. The app labels incomplete observations. Keep the executable, its two read helpers and the accompanying notices together. [Windows engineering builds](https://github.com/jupes/agent-forge-desktop/actions/workflows/lite-candidate.yml)
+
+From a source checkout on Windows, run `bun run lite:build`. The portable directory is `.work/desktop/apps/lite/build/windows-x64`. The Lite renderer, native app and data reader are verified separately from Full Desktop’s candidate workflow.
+
 To use the Windows app, open a valid Agent Forge Harness checkout in the workspace chooser. The harness also runs on its own as a CLI and browser dashboard. Desktop pins its engine revision in `engine.lock.json` and the `engine` submodule. [Get the harness](https://github.com/jupes/agent-forge-harness#get-started)
 
 ![Agent Forge Desktop’s Projects view with two example projects, their pinned status, and controls for opening a project or asking Keeper.](apps/desktop/docs/screenshots/projects-home.png)

@@ -11,6 +11,10 @@ import { Button } from "../../../docs/js/ds/Button";
 import type { ProjectWorkMap } from "../../../types/project-work-map";
 import { PortfolioForge } from "./PortfolioForge";
 import {
+  PortfolioProjectChart,
+  portfolioStates as states,
+} from "./PortfolioProjectChart";
+import {
   buildPortfolioGraph,
   buildPortfolioMap,
   filterPortfolioBeads,
@@ -39,26 +43,17 @@ type Placement = PortfolioGraph["nodes"][number];
 // The graph is laid out symmetrically around the owner.
 const mapCenter = { x: 0.5, y: 0.5 };
 
-const states = {
-  working: { label: "Working now", mark: "●" },
-  in_progress: { label: "In progress", mark: "◐" },
-  ready: { label: "Ready", mark: "◆" },
-  not_started: { label: "Not started", mark: "○" },
-  blocked: { label: "Blocked", mark: "▲" },
-  completed: { label: "Completed", mark: "✓" },
-  other: { label: "Other status", mark: "◇" },
-} satisfies Record<WorkMapState, { label: string; mark: string }>;
-
 const filters = ["all", ...Object.keys(states)] as readonly PortfolioFilter[];
 
 export interface PortfolioWorkMapProps {
+  edition?: "desktop" | "lite";
   defaultProjectId?: string | undefined;
   data: ProjectWorkMap | null;
   loading: boolean;
   error: string | null;
   onRefresh(): void;
-  onOpenProject(projectId: string): void;
-  onOpenBead(projectId: string, beadId: string): void;
+  onOpenProject?(projectId: string): void;
+  onOpenBead?(projectId: string, beadId: string): void;
 }
 
 export function PortfolioWorkMap({ data, ...props }: PortfolioWorkMapProps) {
@@ -94,6 +89,7 @@ export function PortfolioWorkMap({ data, ...props }: PortfolioWorkMapProps) {
 
 function PortfolioView({
   data,
+  edition = "desktop",
   defaultProjectId,
   loading,
   error,
@@ -101,7 +97,7 @@ function PortfolioView({
   onOpenProject,
   onOpenBead,
 }: Omit<PortfolioWorkMapProps, "data"> & { data: ProjectWorkMap }) {
-  const [view, setView] = useState<"graph" | "list">("graph");
+  const [view, setView] = useState<"graph" | "list" | "projects">("graph");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<PortfolioFilter>("all");
   const [selectedKey, setSelectedKey] = useState(OWNER_NODE);
@@ -116,10 +112,6 @@ function PortfolioView({
   const model = useMemo(() => buildPortfolioMap(data), [data]);
   const owner = model.nodes.get(OWNER_NODE);
   const selected = model.nodes.get(selectedKey) ?? owner;
-  const graph = useMemo(
-    () => buildPortfolioGraph(model, expanded, selected?.key ?? OWNER_NODE),
-    [model, expanded, selected],
-  );
   const matches = useMemo(
     () => filterPortfolioBeads(model, query, filter),
     [model, query, filter],
@@ -219,7 +211,7 @@ function PortfolioView({
           </p>
         </div>
         <div class="af-portfolio-heading-actions">
-          {defaultProjectId && (
+          {defaultProjectId && onOpenProject && (
             <Button onClick={() => onOpenProject(defaultProjectId)}>
               Open Default workspace
             </Button>
@@ -258,10 +250,18 @@ function PortfolioView({
       {!projects.length ? (
         <div class="af-portfolio-empty">
           <h2>No projects in this catalog</h2>
-          <p>
-            Open Projects to set up the first project on this local tracker.
-          </p>
-          <Button href="#/desktop/projects">Open Projects</Button>
+          {edition === "desktop" && onOpenProject ? (
+            <>
+              <p>
+                Open Projects to set up the first project on this local tracker.
+              </p>
+              <Button href="#/desktop/projects">Open Projects</Button>
+            </>
+          ) : (
+            <p>
+              Projects saved to the connected Forge catalog will appear here.
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -298,6 +298,13 @@ function PortfolioView({
               >
                 List
               </button>
+              <button
+                type="button"
+                aria-pressed={view === "projects"}
+                onClick={() => setView("projects")}
+              >
+                Compare projects
+              </button>
             </div>
           </div>
           <div
@@ -326,7 +333,7 @@ function PortfolioView({
             <div class="af-portfolio-content">
               {view === "graph" ? (
                 <PortfolioCanvas
-                  graph={graph}
+                  model={model}
                   snapshot={data}
                   stale={Boolean(error)}
                   selected={selected}
@@ -334,6 +341,21 @@ function PortfolioView({
                   highlighted={highlighted}
                   cameraRequest={cameraRequest}
                   onSelect={select}
+                />
+              ) : view === "projects" ? (
+                <PortfolioProjectChart
+                  projects={data.projects}
+                  matches={matches}
+                  selectedId={
+                    selected.kind === "owner" ? null : selected.projectId
+                  }
+                  trackerAvailable={data.trackerAvailable}
+                  filtered={hasFilter}
+                  stale={Boolean(error)}
+                  onSelect={(id) => {
+                    const node = model.nodes.get(projectNodeKey(id));
+                    if (node) relationSelection(node);
+                  }}
                 />
               ) : (
                 <section class="af-portfolio-list" aria-label="Beads list">
@@ -477,9 +499,15 @@ function PortfolioView({
                 <>
                   {selected.kind === "project" && (
                     <div class="af-portfolio-detail-actions">
-                      <Button onClick={() => onOpenProject(selected.projectId)}>
-                        Open project
-                      </Button>
+                      {onOpenProject && (
+                        <Button
+                          onClick={() => onOpenProject(selected.projectId)}
+                        >
+                          {edition === "lite"
+                            ? "View project trends"
+                            : "Open project"}
+                        </Button>
+                      )}
                       {selected.project.availability !== "available" && (
                         <span>
                           {availabilityLabel(selected.project.availability)}
@@ -497,7 +525,7 @@ function PortfolioView({
                       )}
                     />
                   )}
-                  {isPortfolioBead(selected) && (
+                  {onOpenBead && isPortfolioBead(selected) && (
                     <Button
                       class="af-portfolio-open-bead"
                       onClick={() =>
@@ -827,7 +855,7 @@ function viewportCenter(
 }
 
 function PortfolioCanvas({
-  graph,
+  model,
   snapshot,
   stale,
   selected,
@@ -836,7 +864,7 @@ function PortfolioCanvas({
   cameraRequest,
   onSelect,
 }: {
-  graph: PortfolioGraph;
+  model: MapModel;
   snapshot: ProjectWorkMap;
   stale: boolean;
   selected: PortfolioNode;
@@ -848,16 +876,29 @@ function PortfolioCanvas({
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const graph = useMemo(
+    () => buildPortfolioGraph(model, expanded, selected.key, size),
+    [model, expanded, selected.key, size],
+  );
   const lastSize = useRef(size);
-  const lastCenter = useRef(mapCenter);
+  // Camera anchors use unscaled distances from You. Normalized fractions
+  // would change the apparent pan when a portrait layout changes its bounds.
+  const lastAnchor = useRef({ x: 0, y: 0 });
+  const lastBounds = useRef({ width: 0, height: 0 });
   const reducedMotion = useReducedMotion();
-  const frame = useGraphMotion(graph, snapshot, reducedMotion);
+  const frame = useGraphMotion(
+    graph,
+    snapshot,
+    reducedMotion || !lastSize.current.width,
+  );
   const { camera, requestedZoom, fly, interrupt } =
     useCameraMotion(reducedMotion);
   const lastCamera = useRef(camera);
   const lastCameraRequest = useRef(cameraRequest);
   const redraw = useRef<() => void>(() => {});
   const [panning, setPanning] = useState(false);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const drag = useRef<{
     pointerId: number;
     x: number;
@@ -890,6 +931,17 @@ function PortfolioCanvas({
     () => new Map(frame.nodes.map((entry) => [entry.node.key, entry])),
     [frame],
   );
+  const previewKey = panning ? null : (hoveredKey ?? focusedKey);
+  const neighborhood = useMemo(() => {
+    if (!previewKey || !graph.nodes.some(({ node }) => node.key === previewKey))
+      return null;
+    const keys = new Set([previewKey]);
+    for (const edge of graph.edges) {
+      if (edge.from === previewKey) keys.add(edge.to);
+      if (edge.to === previewKey) keys.add(edge.from);
+    }
+    return keys;
+  }, [graph, previewKey]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -913,35 +965,45 @@ function PortfolioCanvas({
     const viewport = viewportRef.current;
     const canvas = canvasRef.current;
     if (!viewport || !canvas || !scale) return;
-    if (camera !== lastCamera.current || size !== lastSize.current) {
+    if (
+      camera !== lastCamera.current ||
+      size !== lastSize.current ||
+      frame.width !== lastBounds.current.width ||
+      frame.height !== lastBounds.current.height
+    ) {
       // Resizing can clamp scrollLeft before this render. Restore the point
       // that was actually in the middle of the last measured viewport.
       const center =
-        camera !== lastCamera.current ? camera : lastCenter.current;
+        camera !== lastCamera.current
+          ? { x: camera.x * frame.width, y: camera.y * frame.height }
+          : {
+              x: frame.width / 2 + lastAnchor.current.x,
+              y: frame.height / 2 + lastAnchor.current.y,
+            };
       lastCamera.current = camera;
       lastSize.current = size;
+      lastBounds.current = { width: frame.width, height: frame.height };
       viewport.scrollTo(
-        originX + center.x * frame.width * scale - size.width / 2,
-        originY + center.y * frame.height * scale - size.height / 2,
+        originX + center.x * scale - size.width / 2,
+        originY + center.y * scale - size.height / 2,
       );
     }
     redraw.current = () => {
       if (
         viewport.clientWidth === size.width &&
         viewport.clientHeight === size.height
-      )
-        lastCenter.current = viewportCenter(
-          viewport,
-          frame,
-          scale,
-          originX,
-          originY,
-        );
+      ) {
+        const center = viewportCenter(viewport, frame, scale, originX, originY);
+        lastAnchor.current = {
+          x: (center.x - 0.5) * frame.width,
+          y: (center.y - 0.5) * frame.height,
+        };
+      }
       drawConnections(
         canvas,
         frame,
         layout,
-        selected.key,
+        neighborhood && previewKey ? previewKey : selected.key,
         scale,
         originX - viewport.scrollLeft,
         originY - viewport.scrollTop,
@@ -949,7 +1011,18 @@ function PortfolioCanvas({
     };
     // Lines and buttons consume the same frame before the browser paints.
     redraw.current();
-  }, [frame, layout, camera, size, selected.key, scale, originX, originY]);
+  }, [
+    frame,
+    layout,
+    camera,
+    size,
+    selected.key,
+    previewKey,
+    neighborhood,
+    scale,
+    originX,
+    originY,
+  ]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -1081,6 +1154,18 @@ function PortfolioCanvas({
                   key={node.key}
                   type="button"
                   class="af-portfolio-node"
+                  data-neighbor={neighborhood?.has(node.key)}
+                  onPointerEnter={(event) => {
+                    if (event.pointerType === "mouse") setHoveredKey(node.key);
+                  }}
+                  onPointerLeave={() => setHoveredKey(null)}
+                  onFocus={(event) => {
+                    if (event.currentTarget.matches(":focus-visible")) {
+                      setHoveredKey(null);
+                      setFocusedKey(node.key);
+                    }
+                  }}
+                  onBlur={() => setFocusedKey(null)}
                   disabled={exiting}
                   aria-hidden={exiting || undefined}
                   data-kind={node.kind}
@@ -1094,6 +1179,14 @@ function PortfolioCanvas({
                       node.kind !== "owner",
                   )}
                   aria-label={graphNodeLabel(node, stale)}
+                  aria-description={
+                    node.kind === "project" &&
+                    node.project.availability === "unavailable"
+                      ? "Source unavailable"
+                      : node.kind === "project" || node.kind === "epic"
+                        ? `${node.counts.completed} of ${node.counts.total} observed beads completed`
+                        : undefined
+                  }
                   aria-pressed={selected.key === node.key}
                   aria-expanded={
                     node.kind === "epic" ? expanded.has(node.key) : undefined
@@ -1121,6 +1214,21 @@ function PortfolioCanvas({
                     <>
                       {isWorkingBead(node) && <PortfolioForge />}
                       <strong>{node.title}</strong>
+                      {(node.kind === "epic" ||
+                        (node.kind === "project" &&
+                          node.project.availability === "available")) &&
+                        node.counts.total > 0 && (
+                          <span
+                            class="af-portfolio-completion"
+                            aria-hidden="true"
+                          >
+                            <i
+                              style={{
+                                transform: `scaleX(${node.counts.completed / node.counts.total})`,
+                              }}
+                            />
+                          </span>
+                        )}
                       {node.kind === "project" &&
                       node.project.availability !== "available" ? (
                         <small>

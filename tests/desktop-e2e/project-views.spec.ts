@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { buildProjectOverview } from "../../scripts/projects/overview";
 import { providerReadinessFixture } from "../../scripts/providers/testing";
+import type { BeadsIssue } from "../../types/beads";
+import type { LedgerEvent } from "../../types/hearth";
 import { readState, withStateLock, writeState } from "../e2e/bd-stand-in-state";
 import { BD_STAND_IN_STATE } from "../e2e/servers";
 import {
@@ -11,6 +14,127 @@ import {
 } from "./project-fixtures";
 
 test.beforeEach(seedProjects);
+
+test("the closure chart preserves zero and proportional counts, and its daily readout follows the keyboard", async ({
+  page,
+}) => {
+  const asOf = "2026-11-30T12:00:00.000Z";
+  const issues: BeadsIssue[] = [
+    {
+      id: "alpha-epic",
+      title: "Forge production",
+      type: "epic",
+      status: "open",
+      createdAt: alpha.createdAt,
+      updatedAt: asOf,
+      labels: ["project:alpha"],
+    },
+  ];
+  const events: LedgerEvent[] = [];
+  const dailyCounts = [
+    0, 3, 4, 8, 2, 0, 0, 2, 7, 10, 4, 2, 0, 0, 1, 11, 6, 4, 7, 3, 0, 0, 5, 8, 9,
+    12, 8, 0, 12, 24,
+  ];
+  for (const [offset, count] of dailyCounts.entries()) {
+    const date = `2026-11-${String(offset + 1).padStart(2, "0")}`;
+    for (let index = 0; index < count; index++) {
+      const id = events.length + 1;
+      const beadId = `batch-${id}`;
+      issues.push({
+        id: beadId,
+        title: `Batch ${id}`,
+        type: "task",
+        status: "closed",
+        parent: "alpha-epic",
+        labels: ["project:alpha"],
+        createdAt: alpha.createdAt,
+        updatedAt: asOf,
+      });
+      events.push({
+        id,
+        ulid: `event-${id}`,
+        workspace,
+        beadId,
+        ts: `${date}T10:00:00.000Z`,
+        kind: "bead.transitioned",
+        payload: { action: "close" },
+      });
+    }
+  }
+  const data = buildProjectOverview(
+    alpha,
+    {
+      workspace,
+      asOf,
+      issues,
+      queue: [],
+      sessions: [],
+      sessionsComplete: true,
+      problems: [],
+    },
+    { events, more: false, reservations: [], shifts: [] },
+  );
+  data.summary.runs.push({
+    slug: "phase-fixture",
+    phase: "plan",
+    completed: ["research"],
+    next: null,
+    halted: { phase: "plan", reason: "Recorded hold" },
+    reviewPending: null,
+    revising: false,
+    complete: false,
+    mode: "gated",
+    feature: null,
+    epic: null,
+    checkout: workspace,
+    updatedAt: data.summary.asOf,
+  });
+  await page.route(`**/projects/${alpha.id}/overview`, (route) =>
+    route.fulfill({ json: { ok: true, data, error: null } }),
+  );
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/index.html#/desktop/project/${alpha.id}/overview`);
+  const chart = page.getByRole("figure", {
+    name: "Recorded closures by UTC day",
+  });
+  const slider = chart.getByRole("slider", { name: "Inspect daily closures" });
+  await expect(slider).toHaveAttribute(
+    "aria-valuetext",
+    "2026-11-30 UTC, 24 closures",
+  );
+  await slider.press("ArrowLeft");
+  await expect(slider).toHaveAttribute(
+    "aria-valuetext",
+    "2026-11-29 UTC, 12 closures",
+  );
+  await page.getByRole("region", { name: "Recorded throughput" }).screenshot({
+    path: ".tmp/screenshots/forge-desktop/overview.png",
+  });
+  await chart.getByText("Daily counts", { exact: true }).click();
+  await expect(
+    chart.getByRole("row", { name: "2026-11-29 12" }),
+  ).toHaveAttribute("data-selected", "true");
+  const bars = chart.locator(".af-forge-bin i");
+  await expect(bars).toHaveCount(30);
+  const heights = await bars.evaluateAll((nodes) =>
+    nodes.map((node) => node.getBoundingClientRect().height),
+  );
+  expect(heights[0]).toBe(0);
+  expect(heights[29]).toBeGreaterThan(0);
+  expect(heights[28]! / heights[29]!).toBeCloseTo(0.5);
+  await expect(bars.first()).toHaveCSS("transition-duration", "0s");
+  const phases = page
+    .getByRole("list", { name: "Recorded run phases" })
+    .getByRole("listitem");
+  await expect(phases.nth(0)).toHaveAttribute("data-state", "Complete");
+  await expect(phases.nth(1)).toHaveAttribute("data-state", "Halted");
+  await expect(phases.nth(2)).toHaveAttribute("data-state", "Upcoming");
+  await page
+    .getByRole("region", { name: "Forge run observations" })
+    .screenshot({
+      path: ".tmp/screenshots/forge-desktop/run-phases.png",
+    });
+});
 
 test("Overview shows three of four scoped needs-you items and linked sections", async ({
   page,

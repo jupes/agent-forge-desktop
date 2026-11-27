@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Agent Forge Lite",
+  "identifier": "dev.agentforge.lite",
+  "build": { "frontendDist": "../dist" },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
+      "capabilities": [{
+        "identifier": "forge-lite-local-reads",
+        "windows": ["main"],
+        "permissions": ["allow-read-work-map", "allow-read-project-trends"]
+      }]
+    }
+  },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}

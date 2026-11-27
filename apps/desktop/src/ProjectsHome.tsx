@@ -14,6 +14,7 @@ import {
 } from "./projects-model";
 import "./projects.css";
 import type { ProviderReadinessPage } from "../../../types/provider-readiness";
+import { ForgeRunPhases } from "./ForgeDataViews";
 import { ProjectKeeperLine } from "./KeeperBrief";
 import type { KeeperClient } from "./keeper-client";
 import { ProjectCreateFlow } from "./ProjectCreateFlow";
@@ -269,21 +270,7 @@ export function ProjectsHomeView({
                   >
                     {run.slug}
                   </a>
-                  <p>
-                    {["research", "plan", "implement", "ship"].map((phase) => (
-                      <span
-                        key={phase}
-                        aria-current={run.phase === phase ? "step" : undefined}
-                      >
-                        {phase}
-                        {run.completed.includes(phase as typeof run.phase)
-                          ? " ✓"
-                          : run.phase === phase
-                            ? " · current"
-                            : ""}{" "}
-                      </span>
-                    ))}
-                  </p>
+                  <ForgeRunPhases run={run} />
                   {run.halted && <p>Halted: {run.halted.reason}</p>}
                 </div>
               ))}
